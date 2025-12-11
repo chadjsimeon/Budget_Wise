@@ -53,6 +53,7 @@ interface AppState {
   addAccount: (account: Omit<Account, 'id'>) => void;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
   setCategoryAssignment: (month: string, categoryId: string, amount: number) => void;
+  moveMoney: (fromCategoryId: string, toCategoryId: string, amount: number, month: string) => void;
   
   // Getters (computed)
   getAccountBalance: (accountId: string) => number;
@@ -146,6 +147,23 @@ export const useStore = create<AppState>()(
           }
         }
       })),
+
+      moveMoney: (fromCategoryId, toCategoryId, amount, month) => set((state) => {
+        const currentAssignments = state.monthlyAssignments[month] || {};
+        const fromAmount = currentAssignments[fromCategoryId] || 0;
+        const toAmount = currentAssignments[toCategoryId] || 0;
+
+        return {
+          monthlyAssignments: {
+            ...state.monthlyAssignments,
+            [month]: {
+              ...currentAssignments,
+              [fromCategoryId]: fromAmount - amount,
+              [toCategoryId]: toAmount + amount
+            }
+          }
+        };
+      }),
 
       getAccountBalance: (accountId) => {
         const state = get();
