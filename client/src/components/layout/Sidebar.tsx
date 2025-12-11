@@ -12,6 +12,7 @@ import {
   PlusCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { CreateAccountDialog } from '@/components/modals/CreateAccountDialog';
 
 export function Sidebar() {
   const [location] = useLocation();
@@ -66,9 +67,14 @@ export function Sidebar() {
         <div>
           <div className="flex items-center justify-between px-3 mb-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">Budget</h3>
-            <button className="text-sidebar-foreground/50 hover:text-white transition-colors">
-              <PlusCircle className="w-3 h-3" />
-            </button>
+            <CreateAccountDialog 
+              defaultType="checking"
+              trigger={
+                <button className="text-sidebar-foreground/50 hover:text-white transition-colors">
+                  <PlusCircle className="w-3 h-3" />
+                </button>
+              }
+            />
           </div>
           <div className="space-y-0.5">
             {budgetAccounts.map(account => (
@@ -97,9 +103,14 @@ export function Sidebar() {
         <div>
           <div className="flex items-center justify-between px-3 mb-2">
             <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">Loans & Credit</h3>
-            <button className="text-sidebar-foreground/50 hover:text-white transition-colors">
-              <PlusCircle className="w-3 h-3" />
-            </button>
+            <CreateAccountDialog 
+              defaultType="credit"
+              trigger={
+                <button className="text-sidebar-foreground/50 hover:text-white transition-colors">
+                  <PlusCircle className="w-3 h-3" />
+                </button>
+              }
+            />
           </div>
           <div className="space-y-0.5">
             {loansAndCredit.map(account => (
