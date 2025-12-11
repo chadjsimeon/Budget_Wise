@@ -1,8 +1,13 @@
 import { AppShell } from "@/components/layout/AppShell";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { useStore } from '@/lib/store';
 
 export default function ReportsPage() {
+  const { getNetWorth, transactions } = useStore();
+  const netWorth = getNetWorth();
+
+  // Simple aggregation for chart (mock logic for prototype)
   const data = [
     { name: 'Rent', amount: 5000 },
     { name: 'Groceries', amount: 3000 },
@@ -10,6 +15,10 @@ export default function ReportsPage() {
     { name: 'Transport', amount: 450 },
     { name: 'Dining', amount: 1200 },
   ];
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-TT', { style: 'currency', currency: 'TTD' }).format(amount);
+  };
 
   return (
     <div className="p-8 space-y-8">
@@ -22,8 +31,13 @@ export default function ReportsPage() {
             <CardDescription>Total assets minus liabilities</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">TT$ -32,500.00</div>
-            <p className="text-xs text-muted-foreground mt-1">+2.5% from last month</p>
+            <div className={cn(
+              "text-2xl font-bold",
+              netWorth >= 0 ? "text-green-600" : "text-red-600"
+            )}>
+              {formatCurrency(netWorth)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">Includes Budget Accounts & Assets</p>
           </CardContent>
         </Card>
         <Card>
@@ -59,4 +73,9 @@ export default function ReportsPage() {
       </Card>
     </div>
   );
+}
+
+// Helper for cn (was missing import in previous file read, added it now)
+function cn(...classes: (string | undefined | null | false)[]) {
+  return classes.filter(Boolean).join(' ');
 }

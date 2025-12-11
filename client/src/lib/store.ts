@@ -11,6 +11,13 @@ export interface Account {
   balance: number;
 }
 
+export interface Asset {
+  id: string;
+  name: string;
+  value: number;
+  type: 'property' | 'vehicle' | 'investment' | 'other';
+}
+
 export interface CategoryGroup {
   id: string;
   name: string;
@@ -42,6 +49,7 @@ export interface MonthlyAssignments {
 
 interface AppState {
   accounts: Account[];
+  assets: Asset[];
   categoryGroups: CategoryGroup[];
   categories: Category[];
   transactions: Transaction[];
@@ -51,6 +59,9 @@ interface AppState {
   // Actions
   setMonth: (month: string) => void;
   addAccount: (account: Omit<Account, 'id'>) => void;
+  addAsset: (asset: Omit<Asset, 'id'>) => void;
+  updateAsset: (id: string, value: number) => void;
+  deleteAsset: (id: string) => void;
   addTransaction: (transaction: Omit<Transaction, 'id'>) => void;
   setCategoryAssignment: (month: string, categoryId: string, amount: number) => void;
   moveMoney: (fromCategoryId: string, toCategoryId: string, amount: number, month: string) => void;
@@ -60,6 +71,7 @@ interface AppState {
   getCategoryActivity: (month: string, categoryId: string) => number;
   getCategoryAvailable: (month: string, categoryId: string) => number;
   getReadyToAssign: (month: string) => number;
+  getNetWorth: () => number;
 }
 
 // Initial Mock Data
@@ -68,6 +80,12 @@ const INITIAL_ACCOUNTS: Account[] = [
   { id: '2', name: 'Unit Trust Savings', type: 'savings', balance: 45000.00 },
   { id: '3', name: 'Scotiabank Magna', type: 'credit', balance: -2450.50 },
   { id: '4', name: 'Car Loan', type: 'loan', balance: -85000.00 },
+];
+
+const INITIAL_ASSETS: Asset[] = [
+  { id: 'a1', name: 'House (Maraval)', value: 2500000, type: 'property' },
+  { id: 'a2', name: 'Toyota Corolla', value: 95000, type: 'vehicle' },
+  { id: 'a3', name: 'Mutual Funds', value: 150000, type: 'investment' },
 ];
 
 const INITIAL_GROUPS: CategoryGroup[] = [
@@ -112,6 +130,7 @@ export const useStore = create<AppState>()(
   persist(
     (set, get) => ({
       accounts: INITIAL_ACCOUNTS,
+      assets: INITIAL_ASSETS,
       categoryGroups: INITIAL_GROUPS,
       categories: INITIAL_CATEGORIES,
       transactions: INITIAL_TRANSACTIONS,
@@ -122,6 +141,18 @@ export const useStore = create<AppState>()(
 
       addAccount: (account) => set((state) => ({
         accounts: [...state.accounts, { ...account, id: Math.random().toString(36).substr(2, 9) }]
+      })),
+
+      addAsset: (asset) => set((state) => ({
+        assets: [...state.assets, { ...asset, id: Math.random().toString(36).substr(2, 9) }]
+      })),
+
+      updateAsset: (id, value) => set((state) => ({
+        assets: state.assets.map(a => a.id === id ? { ...a, value } : a)
+      })),
+
+      deleteAsset: (id) => set((state) => ({
+        assets: state.assets.filter(a => a.id !== id)
       })),
 
       addTransaction: (transaction) => set((state) => {
@@ -201,6 +232,13 @@ export const useStore = create<AppState>()(
         // In a real app, this logic is much more complex (rollovers, credit card handling)
         // For prototype: Simple Cash - Assigned
         return totalCash - totalAssigned;
+      },
+
+      getNetWorth: () => {
+        const state = get();
+        const accountsTotal = state.accounts.reduce((sum, a) => sum + a.balance, 0);
+        const assetsTotal = state.assets.reduce((sum, a) => sum + a.value, 0);
+        return accountsTotal + assetsTotal;
       }
     }),
     {

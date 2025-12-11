@@ -9,7 +9,8 @@ import {
   LayoutDashboard, 
   ArrowRightLeft,
   Settings,
-  PlusCircle
+  PlusCircle,
+  Briefcase
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CreateAccountDialog } from '@/components/modals/CreateAccountDialog';
@@ -59,6 +60,7 @@ export function Sidebar() {
         <NavItem href="/" icon={LayoutDashboard} label="Budget" />
         <NavItem href="/reports" icon={PieChart} label="Reports" />
         <NavItem href="/transactions" icon={ArrowRightLeft} label="All Accounts" />
+        <NavItem href="/assets" icon={Briefcase} label="Asset Tracking" />
       </div>
 
       {/* Accounts List */}
