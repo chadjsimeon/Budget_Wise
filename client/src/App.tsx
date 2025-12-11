@@ -1,29 +1,22 @@
-import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
-import { QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "@/components/ui/toaster";
-import { TooltipProvider } from "@/components/ui/tooltip";
+import { Switch, Route, Redirect } from "wouter";
+import { AppShell } from "@/components/layout/AppShell";
+import BudgetPage from "@/pages/Budget";
+import AccountsPage from "@/pages/Accounts";
+import ReportsPage from "@/pages/Reports";
 import NotFound from "@/pages/not-found";
-
-function Router() {
-  return (
-    <Switch>
-      {/* Add pages below */}
-      {/* <Route path="/" component={Home}/> */}
-      {/* Fallback to 404 */}
-      <Route component={NotFound} />
-    </Switch>
-  );
-}
 
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Router />
-      </TooltipProvider>
-    </QueryClientProvider>
+    <AppShell>
+      <Switch>
+        <Route path="/" component={BudgetPage} />
+        <Route path="/accounts/:id" component={AccountsPage} />
+        <Route path="/transactions" component={AccountsPage} />
+        <Route path="/reports" component={ReportsPage} />
+        {/* Fallback to 404 */}
+        <Route component={NotFound} />
+      </Switch>
+    </AppShell>
   );
 }
 
