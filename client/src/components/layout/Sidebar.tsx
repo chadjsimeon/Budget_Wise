@@ -68,7 +68,7 @@ export function Sidebar() {
         {/* Budget Accounts */}
         <div>
           <div className="flex items-center justify-between px-3 mb-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">Budget</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">Accounts</h3>
             <CreateAccountDialog 
               defaultType="checking"
               trigger={
