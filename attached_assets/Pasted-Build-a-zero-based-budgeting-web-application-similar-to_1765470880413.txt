@@ -1,0 +1,94 @@
+Build a zero-based budgeting web application similar to YNAB/Debt Free Me with the following specifications:
+CORE FEATURES:
+
+Account Management
+
+Track multiple account types: Cash, Credit Cards, Loans
+Display running balances for each account
+Support negative balances for credit/loans
+Auto-close loan accounts when balance reaches zero
+Sidebar showing all accounts grouped by type with current balances
+
+
+Budget Categories
+
+Create and manage budget categories
+Assign money to categories each month
+Track: Assigned amount, Activity (spending), Available balance
+Calculate available = assigned - spent
+Visual indicators for overspent (red) vs available (green) categories
+Support category groups/folders
+
+
+Transaction System
+
+Record income and expenses
+Link transactions to accounts and categories
+Update account balances in real-time
+Update category available amounts when spending occurs
+Transaction history view with filtering
+
+
+Monthly Budget Cycle
+
+Navigate between months (previous/next)
+Calculate "Ready to Assign" = Total Account Balances - Total Assigned to Categories
+Monthly summary showing: income, assignments, spending, available
+Roll over unspent category money to next month
+
+
+Dashboard Layout
+
+Left sidebar: Account list with balances
+Top header: Current month selector + "Ready to Assign" amount (prominent green box)
+Main area: Category table with columns (Category, Assigned, Activity, Available)
+Right panel: Month summary statistics
+Filter tabs: All, Underfunded, Overfunded, Money Available
+
+
+
+DATA MODELS:
+javascriptAccount {
+  id, name, type (cash/credit/loan), balance, isActive, currency
+}
+
+Category {
+  id, name, groupId, assigned, spent, available, monthYear
+}
+
+Transaction {
+  id, accountId, categoryId, amount, date, description, type (income/expense)
+}
+
+BudgetMonth {
+  id, monthYear, totalIncome, totalAssigned, totalSpent
+}
+UI SPECIFICATIONS:
+
+Currency format: TT$ (Trinidad & Tobago Dollar)
+Color scheme: Dark blue sidebar (#1e3a8a), green for positive amounts, red for negative
+Responsive design (mobile-friendly)
+Clean, modern interface with good contrast
+Use icons for account types (wallet, credit card, building)
+
+KEY CALCULATIONS:
+
+Available to Assign = Sum(all account balances) - Sum(all category assignments)
+Category Available = Assigned - Spent
+Account Balance = Starting Balance + Income - Expenses
+
+ADDITIONAL FEATURES:
+
+Asset tracking capability (separate from budget accounts)
+Auto-assign functionality for recurring categories
+Search/filter transactions and categories
+Export data to CSV/Excel
+
+TECH PREFERENCES:
+
+React for frontend
+PostgreSQL or SQLite for database
+Tailwind CSS for styling
+Local storage initially, with backend API later
+
+Build this with clean, modular code that's easy to extend with additional features later.
