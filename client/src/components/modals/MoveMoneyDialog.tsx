@@ -28,7 +28,16 @@ export function MoveMoneyDialog({ sourceCategoryId, trigger, open: controlledOpe
   const open = isControlled ? controlledOpen : internalOpen;
   const setOpen = isControlled ? onOpenChange! : setInternalOpen;
 
-  const { categories, moveMoney, currentMonth, getCategoryAvailable } = useStore();
+  const {
+    currentBudgetId,
+    categories: allCategories,
+    moveMoney,
+    currentMonth,
+    getCategoryAvailable
+  } = useStore();
+
+  // Filter by current budget
+  const categories = allCategories.filter(c => c.budgetId === currentBudgetId);
   const sourceCategory = categories.find(c => c.id === sourceCategoryId);
   const availableAmount = getCategoryAvailable(currentMonth, sourceCategoryId);
 

@@ -55,119 +55,119 @@
   --font-sans: 'Plus Jakarta Sans', 'Inter', sans-serif;
 }
 
-/* LIGHT MODE */
+/* LIGHT MODE - Trinidad & Tobago Theme */
 :root {
   --radius: 0.5rem;
-  
-  /* Base */
-  --background: 210 20% 98%; /* Light minimalist background */
-  --foreground: 222 47% 11%; /* Deep Navy for text */
+
+  /* Base - White background with black text */
+  --background: 0 0% 100%; /* Pure white */
+  --foreground: 0 0% 10%; /* Near black for text */
 
   /* Cards */
   --card: 0 0% 100%;
-  --card-foreground: 222 47% 11%;
+  --card-foreground: 0 0% 10%;
 
   /* Popovers */
   --popover: 0 0% 100%;
-  --popover-foreground: 222 47% 11%;
+  --popover-foreground: 0 0% 10%;
 
-  /* Primary - Dark Blue from request #1e3a8a (approx 224 64% 33%) */
-  --primary: 224 64% 33%; 
-  --primary-foreground: 210 40% 98%;
+  /* Primary - Scarlet Ibis Red (#CE1126) */
+  --primary: 350 85% 46%;
+  --primary-foreground: 0 0% 100%;
 
-  /* Secondary */
-  --secondary: 210 40% 96.1%;
-  --secondary-foreground: 222 47% 11.2%;
+  /* Secondary - Light gray */
+  --secondary: 0 0% 96%;
+  --secondary-foreground: 0 0% 10%;
 
   /* Muted */
-  --muted: 210 40% 96.1%;
-  --muted-foreground: 215 16% 47%;
+  --muted: 0 0% 96%;
+  --muted-foreground: 0 0% 40%;
 
-  /* Accent */
-  --accent: 210 40% 96.1%;
-  --accent-foreground: 222 47% 11.2%;
+  /* Accent - Scarlet Ibis Red (lighter for backgrounds) */
+  --accent: 350 85% 96%;
+  --accent-foreground: 350 85% 46%;
 
-  /* Destructive */
-  --destructive: 0 84.2% 60.2%;
-  --destructive-foreground: 210 40% 98%;
+  /* Destructive - Same red but slightly different shade */
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
 
   /* Borders & Inputs */
-  --border: 214 32% 91%;
-  --input: 214 32% 91%;
-  --ring: 224 64% 33%;
+  --border: 0 0% 90%;
+  --input: 0 0% 90%;
+  --ring: 350 85% 46%;
 
-  /* Charts */
-  --chart-1: 12 76% 61%;
-  --chart-2: 173 58% 39%;
-  --chart-3: 197 37% 24%;
-  --chart-4: 43 74% 66%;
-  --chart-5: 27 87% 67%;
+  /* Charts - Trinidad colors palette */
+  --chart-1: 350 85% 46%; /* Scarlet red */
+  --chart-2: 0 0% 10%; /* Black */
+  --chart-3: 0 0% 100%; /* White */
+  --chart-4: 350 70% 65%; /* Light red */
+  --chart-5: 350 60% 30%; /* Dark red */
 
-  /* Sidebar - Dark Blue requested */
-  --sidebar: 224 64% 33%;
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-primary: 210 40% 98%;
-  --sidebar-primary-foreground: 224 64% 33%;
-  --sidebar-accent: 224 60% 40%; /* Slightly lighter blue for hover */
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-border: 224 60% 40%;
-  --sidebar-ring: 210 40% 98%;
+  /* Sidebar - Black with red accents */
+  --sidebar: 0 0% 10%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-primary: 0 0% 95%;
+  --sidebar-primary-foreground: 0 0% 10%;
+  --sidebar-accent: 350 85% 46%; /* Scarlet red for active items */
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-border: 0 0% 20%;
+  --sidebar-ring: 350 85% 46%;
 }
 
 .dark {
-  /* Base */
-  --background: 222 47% 11%;
-  --foreground: 210 40% 98%;
+  /* Base - Black with white text */
+  --background: 0 0% 8%;
+  --foreground: 0 0% 95%;
 
   /* Cards */
-  --card: 222 47% 11%;
-  --card-foreground: 210 40% 98%;
+  --card: 0 0% 12%;
+  --card-foreground: 0 0% 95%;
 
   /* Popovers */
-  --popover: 222 47% 11%;
-  --popover-foreground: 210 40% 98%;
+  --popover: 0 0% 12%;
+  --popover-foreground: 0 0% 95%;
 
-  /* Primary */
-  --primary: 210 40% 98%;
-  --primary-foreground: 222 47% 11.2%;
+  /* Primary - Scarlet Ibis Red */
+  --primary: 350 85% 50%;
+  --primary-foreground: 0 0% 100%;
 
   /* Secondary */
-  --secondary: 217.2 32.6% 17.5%;
-  --secondary-foreground: 210 40% 98%;
+  --secondary: 0 0% 15%;
+  --secondary-foreground: 0 0% 95%;
 
   /* Muted */
-  --muted: 217.2 32.6% 17.5%;
-  --muted-foreground: 215 20.2% 65.1%;
+  --muted: 0 0% 15%;
+  --muted-foreground: 0 0% 60%;
 
   /* Accent */
-  --accent: 217.2 32.6% 17.5%;
-  --accent-foreground: 210 40% 98%;
+  --accent: 0 0% 15%;
+  --accent-foreground: 0 0% 95%;
 
   /* Destructive */
-  --destructive: 0 62.8% 30.6%;
-  --destructive-foreground: 210 40% 98%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 95%;
 
   /* Borders & Inputs */
-  --border: 217.2 32.6% 17.5%;
-  --input: 217.2 32.6% 17.5%;
-  --ring: 212.7 26.8% 83.9%;
+  --border: 0 0% 20%;
+  --input: 0 0% 20%;
+  --ring: 350 85% 50%;
 
-  /* Charts */
-  --chart-1: 220 70% 50%;
-  --chart-2: 160 60% 45%;
-  --chart-3: 30 80% 55%;
-  --chart-4: 280 65% 60%;
-  --chart-5: 340 75% 55%;
+  /* Charts - Trinidad colors */
+  --chart-1: 350 85% 55%; /* Bright scarlet */
+  --chart-2: 0 0% 90%; /* Light gray */
+  --chart-3: 0 0% 30%; /* Dark gray */
+  --chart-4: 350 70% 70%; /* Light red */
+  --chart-5: 350 60% 35%; /* Dark red */
 
-  /* Sidebar */
-  --sidebar: 224 64% 20%; /* Even darker in dark mode */
-  --sidebar-foreground: 210 40% 98%;
-  --sidebar-primary: 224 64% 33%;
-  --sidebar-primary-foreground: 210 40% 98%;
-  --sidebar-accent: 224 60% 30%;
-  --sidebar-accent-foreground: 210 40% 98%;
-  --sidebar-border: 224 60% 30%;
-  --sidebar-ring: 212.7 26.8% 83.9%;
+  /* Sidebar - Pure black with red accents */
+  --sidebar: 0 0% 5%;
+  --sidebar-foreground: 0 0% 95%;
+  --sidebar-primary: 350 85% 50%;
+  --sidebar-primary-foreground: 0 0% 95%;
+  --sidebar-accent: 350 85% 50%;
+  --sidebar-accent-foreground: 0 0% 100%;
+  --sidebar-border: 0 0% 15%;
+  --sidebar-ring: 350 85% 50%;
 }
 
 @layer base {

@@ -1,61 +1,52 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
 import { format, addMonths, subMonths, parse } from 'date-fns';
-import { 
-  ChevronLeft, 
-  ChevronRight, 
-  Plus, 
-  Search,
-  Filter,
-  MoreHorizontal,
-  ArrowRightLeft
+import {
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Plus,
+  ArrowRightLeft,
+  CheckCircle2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { MoveMoneyDialog } from '@/components/modals/MoveMoneyDialog';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { CreateCategoryDialog } from '@/components/modals/CreateCategoryDialog';
+import { CreateCategoryGroupDialog } from '@/components/modals/CreateCategoryGroupDialog';
+
+type FilterType = 'all' | 'underfunded' | 'overfunded' | 'available';
 
 export default function BudgetPage() {
-  const { 
-    currentMonth, 
-    setMonth, 
-    categoryGroups, 
-    categories, 
+  const {
+    currentMonth,
+    setMonth,
+    currentBudgetId,
+    categoryGroups: allCategoryGroups,
+    categories: allCategories,
     monthlyAssignments,
     setCategoryAssignment,
+    setCategoryGoal,
     getCategoryActivity,
     getCategoryAvailable,
-    getReadyToAssign
+    getReadyToAssign,
+    budgetTemplates,
+    saveCurrentAsTemplate,
+    applyBudgetTemplate
   } = useStore();
+
+  // Filter by current budget
+  const categoryGroups = allCategoryGroups.filter(g => g.budgetId === currentBudgetId);
+  const categories = allCategories.filter(c => c.budgetId === currentBudgetId);
 
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(
     categoryGroups.reduce((acc, g) => ({ ...acc, [g.id]: true }), {})
   );
 
-  const [filter, setFilter] = useState<'all' | 'underfunded' | 'overfunded' | 'available'>('all');
+  const [filter, setFilter] = useState<FilterType>('all');
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -63,12 +54,39 @@ export default function BudgetPage() {
 
   const handlePrevMonth = () => {
     const date = parse(currentMonth, 'yyyy-MM', new Date());
-    setMonth(format(subMonths(date, 1), 'yyyy-MM'));
+    const newMonth = format(subMonths(date, 1), 'yyyy-MM');
+    setMonth(newMonth);
   };
 
   const handleNextMonth = () => {
     const date = parse(currentMonth, 'yyyy-MM', new Date());
-    setMonth(format(addMonths(date, 1), 'yyyy-MM'));
+    const newMonth = format(addMonths(date, 1), 'yyyy-MM');
+    setMonth(newMonth);
+  };
+
+  const handleSaveTemplate = () => {
+    const name = prompt('Enter template name:');
+    if (name) {
+      const isDefault = confirm('Set as default template for new months?');
+      saveCurrentAsTemplate(name, isDefault);
+      alert(`Template "${name}" saved!`);
+    }
+  };
+
+  const handleLoadTemplate = () => {
+    if (budgetTemplates.length === 0) {
+      alert('No templates saved yet.');
+      return;
+    }
+    const templateOptions = budgetTemplates.map((t, i) => `${i + 1}. ${t.name}${t.isDefault ? ' (Default)' : ''}`).join('\n');
+    const choice = prompt(`Select a template:\n${templateOptions}\n\nEnter number:`);
+    if (choice) {
+      const index = parseInt(choice) - 1;
+      if (index >= 0 && index < budgetTemplates.length) {
+        applyBudgetTemplate(budgetTemplates[index].id, currentMonth);
+        alert(`Template "${budgetTemplates[index].name}" applied to ${format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMMM yyyy')}!`);
+      }
+    }
   };
 
   const readyToAssign = getReadyToAssign(currentMonth);
@@ -77,193 +95,489 @@ export default function BudgetPage() {
     return new Intl.NumberFormat('en-TT', { style: 'currency', currency: 'TTD' }).format(amount);
   };
 
-  const getFilterLabel = (f: string) => {
-    switch(f) {
-      case 'underfunded': return 'Underfunded';
-      case 'overfunded': return 'Overfunded';
-      case 'available': return 'Money Available';
-      default: return 'All Categories';
+  // Auto-assign function: fund categories to their goal amounts
+  const handleAutoAssign = () => {
+    let remainingToAssign = readyToAssign;
+
+    if (remainingToAssign <= 0) {
+      alert('No money available to assign. Ready to Assign must be positive.');
+      return;
     }
+
+    // Step 1: Get overspent categories (available < 0) - highest priority
+    const overspentCategories = categories
+      .map(cat => ({
+        id: cat.id,
+        assigned: monthlyAssignments[currentMonth]?.[cat.id] || 0,
+        available: getCategoryAvailable(currentMonth, cat.id),
+        goal: cat.goal || 0
+      }))
+      .filter(cat => cat.available < 0)
+      .sort((a, b) => a.available - b.available); // Most overspent first
+
+    // Step 2: Get underfunded categories (assigned < goal) - second priority
+    const underfundedCategories = categories
+      .map(cat => ({
+        id: cat.id,
+        assigned: monthlyAssignments[currentMonth]?.[cat.id] || 0,
+        available: getCategoryAvailable(currentMonth, cat.id),
+        goal: cat.goal || 0
+      }))
+      .filter(cat => cat.goal && cat.goal > 0 && cat.assigned < cat.goal && cat.available >= 0)
+      .sort((a, b) => (a.assigned / a.goal) - (b.assigned / b.goal)); // Least funded percentage first
+
+    let categoriesFunded = 0;
+
+    // First, cover all overspending
+    overspentCategories.forEach(cat => {
+      if (remainingToAssign <= 0) return;
+
+      const overspentAmount = Math.abs(cat.available);
+      const amountToAssign = Math.min(overspentAmount, remainingToAssign);
+
+      const newAssignment = cat.assigned + amountToAssign;
+      setCategoryAssignment(currentMonth, cat.id, newAssignment);
+
+      remainingToAssign -= amountToAssign;
+      categoriesFunded++;
+    });
+
+    // Then, fund underfunded categories toward their goals
+    underfundedCategories.forEach(cat => {
+      if (remainingToAssign <= 0) return;
+
+      const neededAmount = cat.goal - cat.assigned;
+      const amountToAssign = Math.min(neededAmount, remainingToAssign);
+
+      const newAssignment = cat.assigned + amountToAssign;
+      setCategoryAssignment(currentMonth, cat.id, newAssignment);
+
+      remainingToAssign -= amountToAssign;
+      categoriesFunded++;
+    });
+
+    const totalAssigned = readyToAssign - remainingToAssign;
+    alert(`Auto-assigned ${formatCurrency(totalAssigned)} to ${categoriesFunded} ${categoriesFunded === 1 ? 'category' : 'categories'} to meet goals.`);
   };
 
+  // Calculate filter counts, month summary, and cost to be me
+  const { filterCounts, monthSummary, costToBeMe } = useMemo(() => {
+    let underfundedCount = 0;
+    let overfundedCount = 0;
+    let availableCount = 0;
+    let totalAssigned = 0;
+    let totalActivity = 0;
+    let totalAvailable = 0;
+    let totalGoals = 0;
+
+    categories.forEach(cat => {
+      const assigned = monthlyAssignments[currentMonth]?.[cat.id] || 0;
+      const activity = getCategoryActivity(currentMonth, cat.id);
+      const available = getCategoryAvailable(currentMonth, cat.id);
+
+      totalAssigned += assigned;
+      totalActivity += activity;
+      totalAvailable += available;
+      if (cat.goal) totalGoals += cat.goal;
+
+      if (available < 0) underfundedCount++;
+      if (available > assigned && assigned > 0) overfundedCount++;
+      if (available > 0) availableCount++;
+    });
+
+    return {
+      filterCounts: {
+        underfunded: underfundedCount,
+        overfunded: overfundedCount,
+        available: availableCount
+      },
+      monthSummary: {
+        assigned: totalAssigned,
+        activity: totalActivity,
+        available: totalAvailable
+      },
+      costToBeMe: totalGoals
+    };
+  }, [categories, currentMonth, monthlyAssignments, getCategoryActivity, getCategoryAvailable]);
+
   return (
-    <div className="flex flex-col h-full">
-      {/* Header Month Selector & RTA */}
-      <header className="flex-none bg-slate-50 border-b p-6 flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 bg-white rounded-md shadow-sm border p-1">
-            <Button variant="ghost" size="icon" onClick={handlePrevMonth} className="h-8 w-8">
-              <ChevronLeft className="w-4 h-4" />
-            </Button>
-            <span className="w-32 text-center font-semibold text-lg">
-              {format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMMM yyyy')}
-            </span>
-            <Button variant="ghost" size="icon" onClick={handleNextMonth} className="h-8 w-8">
-              <ChevronRight className="w-4 h-4" />
-            </Button>
-          </div>
-        </div>
-
-        <div className="flex flex-col items-center">
-          <div className={cn(
-            "text-3xl font-bold tracking-tight px-6 py-2 rounded-lg transition-colors",
-            readyToAssign >= 0 ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
-          )}>
-            {formatCurrency(readyToAssign)}
-          </div>
-          <span className="text-xs uppercase tracking-wider font-semibold text-slate-500 mt-1">Ready to Assign</span>
-        </div>
-
-        <div className="flex items-center gap-2">
-           <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" className="gap-2">
-                <Filter className="w-4 h-4" /> {getFilterLabel(filter)}
+    <div className="flex h-full bg-slate-50">
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Centered Header */}
+        <header className="flex-none bg-white border-b">
+          <div className="px-8 py-6 flex items-center justify-center gap-8">
+            {/* Month Selector */}
+            <div className="flex items-center gap-3">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handlePrevMonth}
+                className="h-10 w-10 hover:bg-slate-100"
+              >
+                <ChevronLeft className="w-5 h-5" />
               </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuLabel>Filter Views</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => setFilter('all')}>All Categories</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setFilter('underfunded')}>Underfunded (Negative)</DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setFilter('available')}>Money Available</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button variant="outline" size="sm" className="gap-2">
-            <Plus className="w-4 h-4" /> Category Group
-          </Button>
-        </div>
-      </header>
+              <div className="flex items-center gap-3 min-w-[200px] justify-center">
+                <span className="text-2xl font-bold text-slate-900">
+                  {format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMM yyyy')}
+                </span>
+                <Button variant="ghost" size="sm" className="text-slate-500">
+                  <span className="text-sm">Enter a note...</span>
+                </Button>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleNextMonth}
+                className="h-10 w-10 hover:bg-slate-100"
+              >
+                <ChevronRight className="w-5 h-5" />
+              </Button>
+            </div>
 
-      {/* Main Content Area */}
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-sm border overflow-hidden">
-          <Table>
-            <TableHeader className="bg-slate-50">
-              <TableRow>
-                <TableHead className="w-[400px]">CATEGORY</TableHead>
-                <TableHead className="text-right w-[150px]">ASSIGNED</TableHead>
-                <TableHead className="text-right w-[150px]">ACTIVITY</TableHead>
-                <TableHead className="text-right w-[150px]">AVAILABLE</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {categoryGroups.map(group => {
-                const groupCategories = categories.filter(c => {
-                  if (c.groupId !== group.id) return false;
-                  const available = getCategoryAvailable(currentMonth, c.id);
-                  
-                  if (filter === 'underfunded') return available < 0;
-                  if (filter === 'available') return available > 0;
-                  return true;
-                });
+            {/* Ready to Assign */}
+            <div className="flex flex-col items-center gap-1">
+              <div className={cn(
+                "text-2xl font-bold flex items-center gap-2",
+                readyToAssign === 0 ? "text-slate-900" : readyToAssign > 0 ? "text-slate-900" : "text-red-600"
+              )}>
+                {formatCurrency(readyToAssign)}
+                {readyToAssign === 0 && (
+                  <CheckCircle2 className="w-6 h-6 text-green-600" />
+                )}
+              </div>
+              <span className="text-xs text-slate-500 font-medium">
+                {readyToAssign === 0 ? "All Money Assigned" : "Ready to Assign"}
+              </span>
+            </div>
+          </div>
 
-                // If filtering hides all categories in a group, hide the group header too
-                if (groupCategories.length === 0) return null;
+          {/* Filter Tabs */}
+          <div className="border-t border-slate-200 px-8 flex items-center justify-between bg-slate-50/50">
+            <div className="flex items-center gap-6">
+            <button
+              onClick={() => setFilter('all')}
+              className={cn(
+                "relative py-3 px-1 text-sm font-medium transition-colors border-b-2 -mb-px",
+                filter === 'all'
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              )}
+            >
+              All
+            </button>
+            <button
+              onClick={() => setFilter('underfunded')}
+              className={cn(
+                "relative py-3 px-1 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-2",
+                filter === 'underfunded'
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              )}
+            >
+              <span className="w-2 h-2 rounded-full bg-red-500"></span>
+              <span>{filterCounts.underfunded} Overspent</span>
+            </button>
+            <button
+              onClick={() => setFilter('overfunded')}
+              className={cn(
+                "relative py-3 px-1 text-sm font-medium transition-colors border-b-2 -mb-px",
+                filter === 'overfunded'
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              )}
+            >
+              Underfunded
+            </button>
+            <button
+              onClick={() => setFilter('available')}
+              className={cn(
+                "relative py-3 px-1 text-sm font-medium transition-colors border-b-2 -mb-px",
+                filter === 'available'
+                  ? "border-blue-600 text-blue-600"
+                  : "border-transparent text-slate-600 hover:text-slate-900"
+              )}
+            >
+              Money Available
+            </button>
+            </div>
 
-                const isExpanded = expandedGroups[group.id];
+            {/* Template Buttons */}
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSaveTemplate}
+                className="text-xs"
+              >
+                Save as Template
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleLoadTemplate}
+                className="text-xs"
+                disabled={budgetTemplates.length === 0}
+              >
+                Load Template
+              </Button>
+            </div>
+          </div>
+        </header>
 
-                return (
-                  <React.Fragment key={group.id}>
-                    {/* Group Header */}
-                    <TableRow 
-                      className="bg-slate-50/50 hover:bg-slate-100 cursor-pointer"
+        {/* Categories Content */}
+        <div className="flex-1 overflow-auto bg-white">
+          <div className="max-w-5xl mx-auto">
+            {/* Table Header */}
+            <div className="sticky top-0 bg-slate-50 border-b border-slate-200 grid grid-cols-[1fr_140px_140px_140px_140px] gap-4 px-6 py-3">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Goal</div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Assigned</div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Activity</div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Available</div>
+            </div>
+
+            {/* Category Groups */}
+            {categoryGroups.map(group => {
+              const groupCategories = categories.filter(c => {
+                if (c.groupId !== group.id) return false;
+                const available = getCategoryAvailable(currentMonth, c.id);
+                const assigned = monthlyAssignments[currentMonth]?.[c.id] || 0;
+
+                if (filter === 'underfunded') return available < 0;
+                if (filter === 'overfunded') return available < assigned;
+                if (filter === 'available') return available > 0;
+                return true;
+              });
+
+              if (groupCategories.length === 0) return null;
+
+              const isExpanded = expandedGroups[group.id];
+
+              return (
+                <div key={group.id} className="border-b border-slate-100">
+                  {/* Group Header */}
+                  <div className="flex items-center justify-between px-6 py-3 hover:bg-slate-50 transition-colors group/header">
+                    <button
                       onClick={() => toggleGroup(group.id)}
+                      className="flex items-center gap-2 flex-1"
                     >
-                      <TableCell className="font-semibold text-slate-700 py-3 flex items-center gap-2">
-                         <span className={cn("transition-transform duration-200", isExpanded ? "rotate-90" : "")}>
-                           <ChevronRight className="w-4 h-4 text-slate-400" />
-                         </span>
-                         {group.name}
-                      </TableCell>
-                      <TableCell colSpan={3}></TableCell>
-                    </TableRow>
-
-                    {/* Categories */}
-                    {isExpanded && groupCategories.map(category => {
-                      const assigned = monthlyAssignments[currentMonth]?.[category.id] || 0;
-                      const activity = getCategoryActivity(currentMonth, category.id);
-                      const available = getCategoryAvailable(currentMonth, category.id);
-
-                      // Calculate progress (clamped 0-100) for visualization
-                      // If assigned is 0, avoid division by zero
-                      // Logic: If available is positive, bar is green. If negative, red.
-                      // Percentage of "Spent" vs "Assigned"
-                      
-                      let progressValue = 0;
-                      if (assigned > 0) {
-                         progressValue = Math.min(100, (Math.abs(activity) / assigned) * 100);
+                      {isExpanded ? (
+                        <ChevronDown className="w-4 h-4 text-slate-400 transition-transform" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4 text-slate-400 transition-transform" />
+                      )}
+                      <span className="font-semibold text-slate-700 text-sm uppercase tracking-wide">
+                        {group.name}
+                      </span>
+                    </button>
+                    <CreateCategoryDialog
+                      groupId={group.id}
+                      trigger={
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="opacity-0 group-hover/header:opacity-100 transition-opacity text-slate-500 hover:text-blue-600"
+                        >
+                          <Plus className="w-4 h-4 mr-1" />
+                          Add Category
+                        </Button>
                       }
+                    />
+                  </div>
 
-                      return (
-                        <TableRow key={category.id} className="group">
-                          <TableCell className="py-2 pl-10">
-                            <div className="flex flex-col gap-1">
-                              <span className="font-medium text-slate-700">{category.name}</span>
-                              <div className="w-full max-w-[200px]">
-                                <Progress 
-                                  value={progressValue} 
-                                  className={cn(
-                                    "h-1.5", 
-                                    available < 0 ? "[&>div]:bg-red-500 bg-red-100" : 
-                                    progressValue >= 100 ? "[&>div]:bg-yellow-500 bg-slate-100" :
-                                    "[&>div]:bg-green-500 bg-slate-100"
-                                  )} 
-                                />
-                              </div>
+                  {/* Categories */}
+                  {isExpanded && groupCategories.map(category => {
+                    const assigned = monthlyAssignments[currentMonth]?.[category.id] || 0;
+                    const activity = getCategoryActivity(currentMonth, category.id);
+                    const available = getCategoryAvailable(currentMonth, category.id);
+                    const goal = category.goal || 0;
+                    const isOverspent = available < 0;
+                    const isFunded = goal > 0 && assigned >= goal;
+                    const isPartiallyFunded = goal > 0 && assigned > 0 && assigned < goal;
+
+                    return (
+                      <div
+                        key={category.id}
+                        className="grid grid-cols-[1fr_140px_140px_140px_140px] gap-4 px-6 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 group"
+                      >
+                        {/* Category Name */}
+                        <div className="flex flex-col justify-center">
+                          <div className="font-medium text-slate-700">
+                            {category.name}
+                          </div>
+                          {isOverspent && (
+                            <div className="text-xs text-red-600 mt-0.5">
+                              Overspent: {formatCurrency(Math.abs(available))} of {formatCurrency(assigned)}
                             </div>
-                          </TableCell>
-                          <TableCell className="text-right p-2 align-top">
-                            <div className="relative flex items-center justify-end group/input">
-                              <Input 
-                                type="number"
-                                className="w-28 text-right h-8 pr-2 border-transparent bg-transparent hover:bg-slate-50 focus:bg-white focus:border-blue-500 focus:ring-1 transition-all"
-                                value={assigned === 0 ? '' : assigned}
-                                placeholder="0.00"
-                                onClick={(e) => (e.target as HTMLInputElement).select()}
-                                onChange={(e) => {
-                                  const val = parseFloat(e.target.value) || 0;
-                                  setCategoryAssignment(currentMonth, category.id, val);
-                                }}
-                              />
-                            </div>
-                          </TableCell>
-                          <TableCell className="text-right align-top pt-3">
-                            <span className={cn(
-                              "text-sm font-medium",
-                              activity < 0 ? "text-slate-600" : "text-slate-400"
+                          )}
+                          {!isOverspent && goal > 0 && (
+                            <div className={cn(
+                              "text-xs mt-0.5",
+                              isFunded ? "text-green-600" : isPartiallyFunded ? "text-orange-500" : "text-slate-400"
                             )}>
-                              {formatCurrency(activity)}
+                              {formatCurrency(assigned)} / {formatCurrency(goal)}
+                              {isFunded && " ✓"}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Goal */}
+                        <div className="flex items-center justify-end">
+                          <Input
+                            type="number"
+                            step="any"
+                            min="0"
+                            className="w-full text-right h-9 border-slate-200 hover:border-slate-300 focus:border-blue-500 transition-colors"
+                            value={goal || ''}
+                            placeholder="0.00"
+                            onClick={(e) => (e.target as HTMLInputElement).select()}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              const rounded = Math.round(val * 100) / 100;
+                              setCategoryGoal(category.id, rounded);
+                            }}
+                          />
+                        </div>
+
+                        {/* Assigned */}
+                        <div className="flex items-center justify-end">
+                          <Input
+                            type="number"
+                            step="any"
+                            min="0"
+                            className="w-full text-right h-9 border-slate-200 hover:border-slate-300 focus:border-blue-500 transition-colors"
+                            value={assigned || ''}
+                            placeholder="0.00"
+                            onClick={(e) => (e.target as HTMLInputElement).select()}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value) || 0;
+                              const rounded = Math.round(val * 100) / 100;
+                              setCategoryAssignment(currentMonth, category.id, rounded);
+                            }}
+                          />
+                        </div>
+
+                        {/* Activity */}
+                        <div className="flex items-center justify-end">
+                          <span className="text-sm font-medium text-slate-600">
+                            {formatCurrency(activity)}
+                          </span>
+                        </div>
+
+                        {/* Available */}
+                        <div className="flex items-center justify-end gap-2">
+                          {available < 0 ? (
+                            <Badge
+                              variant="destructive"
+                              className="bg-red-500 hover:bg-red-600 text-white font-semibold px-3 py-1 rounded-full"
+                            >
+                              {formatCurrency(available)}
+                            </Badge>
+                          ) : (
+                            <span className={cn(
+                              "text-sm font-semibold",
+                              available > 0 ? "text-slate-700" : "text-slate-400"
+                            )}>
+                              {formatCurrency(available)}
                             </span>
-                          </TableCell>
-                          <TableCell className="text-right align-top pt-2">
-                             <div className="flex items-center justify-end gap-2">
-                                <Badge variant="outline" className={cn(
-                                  "font-bold min-w-[90px] justify-end py-1",
-                                  available < 0 ? "bg-red-50 text-red-600 border-red-200" : 
-                                  available > 0 ? "bg-green-50 text-green-600 border-green-200" : 
-                                  "bg-slate-50 text-slate-400 border-slate-200"
-                                )}>
-                                  {formatCurrency(available)}
-                                </Badge>
-                                <MoveMoneyDialog 
-                                  sourceCategoryId={category.id} 
-                                  trigger={
-                                    <Button variant="ghost" size="icon" className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-blue-600">
-                                      <ArrowRightLeft className="w-3 h-3" />
-                                    </Button>
-                                  }
-                                />
-                             </div>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </React.Fragment>
-                );
-              })}
-            </TableBody>
-          </Table>
+                          )}
+                          <MoveMoneyDialog
+                            sourceCategoryId={category.id}
+                            trigger={
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-blue-600"
+                              >
+                                <ArrowRightLeft className="w-3.5 h-3.5" />
+                              </Button>
+                            }
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+
+            {/* Add Category Group Button */}
+            <div className="p-6">
+              <CreateCategoryGroupDialog
+                trigger={
+                  <Button variant="outline" className="w-full justify-center gap-2 text-slate-600 hover:text-slate-900 border-dashed">
+                    <Plus className="w-4 h-4" />
+                    Add Category Group
+                  </Button>
+                }
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Right Sidebar - Month Summary */}
+      <div className="w-80 border-l border-slate-200 bg-white flex flex-col">
+        <div className="p-6 border-b border-slate-200">
+          <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
+            {format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMMM')}'s Summary
+            <ChevronDown className="w-4 h-4 text-slate-400" />
+          </h2>
+        </div>
+
+        <div className="flex-1 p-6 space-y-6">
+          {/* Left Over from Last Month */}
+          <div>
+            <div className="text-sm text-slate-500 mb-2">Left Over from Last Month</div>
+            <div className="text-2xl font-bold text-slate-900">{formatCurrency(0)}</div>
+          </div>
+
+          {/* Assigned in [Month] */}
+          <div>
+            <div className="text-sm text-slate-500 mb-2">
+              Assigned in {format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMMM')}
+            </div>
+            <div className="text-2xl font-bold text-slate-900">{formatCurrency(monthSummary.assigned)}</div>
+          </div>
+
+          {/* Activity */}
+          <div>
+            <div className="text-sm text-slate-500 mb-2">Activity</div>
+            <div className="text-2xl font-bold text-slate-900">{formatCurrency(monthSummary.activity)}</div>
+          </div>
+
+          {/* Available */}
+          <div>
+            <div className="text-sm text-slate-500 mb-2">Available</div>
+            <div className={cn(
+              "text-2xl font-bold",
+              monthSummary.available < 0 ? "text-red-600" : "text-slate-900"
+            )}>
+              {formatCurrency(monthSummary.available)}
+            </div>
+          </div>
+
+          {/* Cost to Be Me */}
+          <div className="pt-6 border-t border-slate-200">
+            <div className="text-sm text-slate-500 mb-2">Cost to Be Me</div>
+            <div className="text-2xl font-bold text-blue-600">
+              {formatCurrency(costToBeMe)}
+            </div>
+            <p className="text-xs text-slate-500 mt-1">Total monthly budget goal</p>
+          </div>
+        </div>
+
+        {/* Auto-Assign Button */}
+        <div className="p-6 border-t border-slate-200">
+          <Button
+            onClick={handleAutoAssign}
+            disabled={readyToAssign <= 0}
+            className="w-full bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            ⚡ Auto-Assign
+            <ChevronRight className="w-4 h-4 ml-2" />
+          </Button>
         </div>
       </div>
     </div>
