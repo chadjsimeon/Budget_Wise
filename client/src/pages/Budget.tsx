@@ -8,12 +8,25 @@ import {
   ChevronUp,
   Plus,
   ArrowRightLeft,
-  CheckCircle2
+  CheckCircle2,
+  Pencil,
+  Trash2
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { Badge } from "@/components/ui/badge";
+import { useToast } from '@/hooks/use-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { MoveMoneyDialog } from '@/components/modals/MoveMoneyDialog';
 import { CreateCategoryDialog } from '@/components/modals/CreateCategoryDialog';
 import { CreateCategoryGroupDialog } from '@/components/modals/CreateCategoryGroupDialog';
@@ -35,8 +48,11 @@ export default function BudgetPage() {
     getReadyToAssign,
     budgetTemplates,
     saveCurrentAsTemplate,
-    applyBudgetTemplate
+    applyBudgetTemplate,
+    deleteCategoryGroup
   } = useStore();
+
+  const { toast } = useToast();
 
   // Filter by current budget
   const categoryGroups = allCategoryGroups.filter(g => g.budgetId === currentBudgetId);
@@ -47,6 +63,14 @@ export default function BudgetPage() {
   );
 
   const [filter, setFilter] = useState<FilterType>('all');
+
+  // State for edit dialog
+  const [editingGroup, setEditingGroup] = useState<typeof categoryGroups[0] | null>(null);
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+
+  // State for delete confirmation
+  const [deletingGroup, setDeletingGroup] = useState<typeof categoryGroups[0] | null>(null);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -96,6 +120,29 @@ export default function BudgetPage() {
   };
 
   // Auto-assign function: fund categories to their goal amounts
+  const handleEditGroup = (group: typeof categoryGroups[0]) => {
+    setEditingGroup(group);
+    setIsEditDialogOpen(true);
+  };
+
+  const handleDeleteGroup = (group: typeof categoryGroups[0]) => {
+    setDeletingGroup(group);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDeleteGroup = () => {
+    if (deletingGroup) {
+      const categoryCount = categories.filter(c => c.groupId === deletingGroup.id).length;
+      deleteCategoryGroup(deletingGroup.id);
+      toast({
+        title: "Category group deleted",
+        description: `Deleted "${deletingGroup.name}"${categoryCount > 0 ? ` and ${categoryCount} ${categoryCount === 1 ? 'category' : 'categories'}` : ''}`,
+      });
+      setDeletingGroup(null);
+      setIsDeleteDialogOpen(false);
+    }
+  };
+
   const handleAutoAssign = () => {
     let remainingToAssign = readyToAssign;
 
@@ -108,7 +155,7 @@ export default function BudgetPage() {
     const overspentCategories = categories
       .map(cat => ({
         id: cat.id,
-        assigned: monthlyAssignments[currentMonth]?.[cat.id] || 0,
+        assigned: monthlyAssignments[currentBudgetId]?.[currentMonth]?.[cat.id] || 0,
         available: getCategoryAvailable(currentMonth, cat.id),
         goal: cat.goal || 0
       }))
@@ -119,7 +166,7 @@ export default function BudgetPage() {
     const underfundedCategories = categories
       .map(cat => ({
         id: cat.id,
-        assigned: monthlyAssignments[currentMonth]?.[cat.id] || 0,
+        assigned: monthlyAssignments[currentBudgetId]?.[currentMonth]?.[cat.id] || 0,
         available: getCategoryAvailable(currentMonth, cat.id),
         goal: cat.goal || 0
       }))
@@ -171,7 +218,7 @@ export default function BudgetPage() {
     let totalGoals = 0;
 
     categories.forEach(cat => {
-      const assigned = monthlyAssignments[currentMonth]?.[cat.id] || 0;
+      const assigned = monthlyAssignments[currentBudgetId]?.[currentMonth]?.[cat.id] || 0;
       const activity = getCategoryActivity(currentMonth, cat.id);
       const available = getCategoryAvailable(currentMonth, cat.id);
 
@@ -342,7 +389,7 @@ export default function BudgetPage() {
               const groupCategories = categories.filter(c => {
                 if (c.groupId !== group.id) return false;
                 const available = getCategoryAvailable(currentMonth, c.id);
-                const assigned = monthlyAssignments[currentMonth]?.[c.id] || 0;
+                const assigned = monthlyAssignments[currentBudgetId]?.[currentMonth]?.[c.id] || 0;
 
                 if (filter === 'underfunded') return available < 0;
                 if (filter === 'overfunded') return available < assigned;
@@ -350,9 +397,10 @@ export default function BudgetPage() {
                 return true;
               });
 
-              if (groupCategories.length === 0) return null;
+              // Show empty groups only when filter is 'all'
+              if (groupCategories.length === 0 && filter !== 'all') return null;
 
-              const isExpanded = expandedGroups[group.id];
+              const isExpanded = expandedGroups[group.id] ?? true;
 
               return (
                 <div key={group.id} className="border-b border-slate-100">
@@ -371,24 +419,42 @@ export default function BudgetPage() {
                         {group.name}
                       </span>
                     </button>
-                    <CreateCategoryDialog
-                      groupId={group.id}
-                      trigger={
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="opacity-0 group-hover/header:opacity-100 transition-opacity text-slate-500 hover:text-blue-600"
-                        >
-                          <Plus className="w-4 h-4 mr-1" />
-                          Add Category
-                        </Button>
-                      }
-                    />
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 opacity-0 group-hover/header:opacity-100 transition-opacity text-slate-400 hover:text-blue-600"
+                        onClick={() => handleEditGroup(group)}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 opacity-0 group-hover/header:opacity-100 transition-opacity text-slate-400 hover:text-red-600"
+                        onClick={() => handleDeleteGroup(group)}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                      <CreateCategoryDialog
+                        groupId={group.id}
+                        trigger={
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="opacity-0 group-hover/header:opacity-100 transition-opacity text-slate-500 hover:text-blue-600"
+                          >
+                            <Plus className="w-4 h-4 mr-1" />
+                            Add Category
+                          </Button>
+                        }
+                      />
+                    </div>
                   </div>
 
                   {/* Categories */}
                   {isExpanded && groupCategories.map(category => {
-                    const assigned = monthlyAssignments[currentMonth]?.[category.id] || 0;
+                    const assigned = monthlyAssignments[currentBudgetId]?.[currentMonth]?.[category.id] || 0;
                     const activity = getCategoryActivity(currentMonth, category.id);
                     const available = getCategoryAvailable(currentMonth, category.id);
                     const goal = category.goal || 0;
@@ -511,6 +577,12 @@ export default function BudgetPage() {
                     Add Category Group
                   </Button>
                 }
+                onSuccess={() => {
+                  toast({
+                    title: "Category group created",
+                    description: "Successfully created new category group",
+                  });
+                }}
               />
             </div>
           </div>
@@ -580,6 +652,49 @@ export default function BudgetPage() {
           </Button>
         </div>
       </div>
+
+      {/* Edit Category Group Dialog */}
+      <CreateCategoryGroupDialog
+        categoryGroup={editingGroup || undefined}
+        open={isEditDialogOpen}
+        onOpenChange={setIsEditDialogOpen}
+        onSuccess={() => {
+          toast({
+            title: "Category group updated",
+            description: `Successfully updated "${editingGroup?.name}"`,
+          });
+          setEditingGroup(null);
+        }}
+      />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Category Group?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deletingGroup && (
+                <>
+                  This will permanently delete "{deletingGroup.name}"
+                  {categories.filter(c => c.groupId === deletingGroup.id).length > 0 && (
+                    <> and all <strong>{categories.filter(c => c.groupId === deletingGroup.id).length}</strong> {categories.filter(c => c.groupId === deletingGroup.id).length === 1 ? 'category' : 'categories'} within it</>
+                  )}
+                  . This action cannot be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteGroup}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
