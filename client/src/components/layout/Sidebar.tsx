@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { useStore } from '@/lib/store';
+import { useStore, Account } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import {
   Wallet,
@@ -14,7 +14,8 @@ import {
   ChevronDown,
   Building2,
   TrendingUp,
-  Trash2
+  Trash2,
+  Pencil
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CreateAccountDialog } from '@/components/modals/CreateAccountDialog';
@@ -51,6 +52,8 @@ export function Sidebar() {
   } = useStore();
 
   const [budgetToDelete, setBudgetToDelete] = useState<string | null>(null);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
 
   const currentBudget = budgets.find(b => b.id === currentBudgetId);
 
@@ -88,6 +91,13 @@ export function Sidebar() {
       deleteBudget(budgetToDelete);
       setBudgetToDelete(null);
     }
+  };
+
+  const handleEditAccount = (account: Account, e: React.MouseEvent) => {
+    e.preventDefault();  // Prevent navigation
+    e.stopPropagation();  // Prevent event bubbling
+    setEditingAccount(account);
+    setIsEditAccountOpen(true);
   };
 
   const formatCurrency = (amount: number) => {
@@ -202,16 +212,25 @@ export function Sidebar() {
                   "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors group cursor-pointer",
                   location === `/accounts/${account.id}` ? "bg-sidebar-accent text-white" : "hover:bg-sidebar-accent/50 text-sidebar-foreground/80"
                 )}>
-                  <div className="flex items-center gap-2 truncate">
+                  <div className="flex items-center gap-2 truncate flex-1">
                     <Wallet className="w-3 h-3 opacity-70" />
                     <span className="truncate">{account.name}</span>
                   </div>
-                  <span className={cn(
-                    "text-xs font-medium",
-                    account.balance < 0 ? "text-red-400" : "text-emerald-400"
-                  )}>
-                    {formatCurrency(account.balance)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => handleEditAccount(account, e)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-sidebar-accent rounded"
+                      title="Edit account name"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <span className={cn(
+                      "text-xs font-medium",
+                      account.balance < 0 ? "text-red-400" : "text-emerald-400"
+                    )}>
+                      {formatCurrency(account.balance)}
+                    </span>
+                  </div>
                 </div>
               </Link>
             ))}
@@ -238,16 +257,25 @@ export function Sidebar() {
                   "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors group cursor-pointer",
                   location === `/accounts/${account.id}` ? "bg-sidebar-accent text-white" : "hover:bg-sidebar-accent/50 text-sidebar-foreground/80"
                 )}>
-                  <div className="flex items-center gap-2 truncate">
+                  <div className="flex items-center gap-2 truncate flex-1">
                     {account.type === 'loan' ? <Landmark className="w-3 h-3 opacity-70" /> : <CreditCard className="w-3 h-3 opacity-70" />}
                     <span className="truncate">{account.name}</span>
                   </div>
-                  <span className={cn(
-                    "text-xs font-medium",
-                    account.balance < 0 ? "text-red-400" : "text-emerald-400"
-                  )}>
-                    {formatCurrency(account.balance)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => handleEditAccount(account, e)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-sidebar-accent rounded"
+                      title="Edit account name"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <span className={cn(
+                      "text-xs font-medium",
+                      account.balance < 0 ? "text-red-400" : "text-emerald-400"
+                    )}>
+                      {formatCurrency(account.balance)}
+                    </span>
+                  </div>
                 </div>
               </Link>
             ))}
@@ -267,16 +295,25 @@ export function Sidebar() {
                     "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors group cursor-pointer opacity-60",
                     location === `/accounts/${account.id}` ? "bg-sidebar-accent text-white" : "hover:bg-sidebar-accent/50 text-sidebar-foreground/80"
                   )}>
-                    <div className="flex items-center gap-2 truncate">
+                    <div className="flex items-center gap-2 truncate flex-1">
                       <Landmark className="w-3 h-3 opacity-70" />
                       <span className="truncate">{account.name}</span>
                     </div>
-                    <span className={cn(
-                      "text-xs font-medium",
-                      account.balance < 0 ? "text-red-400" : "text-emerald-400"
-                    )}>
-                      {formatCurrency(account.balance)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => handleEditAccount(account, e)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-sidebar-accent rounded"
+                        title="Edit account name"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <span className={cn(
+                        "text-xs font-medium",
+                        account.balance < 0 ? "text-red-400" : "text-emerald-400"
+                      )}>
+                        {formatCurrency(account.balance)}
+                      </span>
+                    </div>
                   </div>
                 </Link>
               ))}
@@ -373,6 +410,14 @@ export function Sidebar() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Account Dialog */}
+      <CreateAccountDialog
+        account={editingAccount || undefined}
+        open={isEditAccountOpen}
+        onOpenChange={setIsEditAccountOpen}
+        onSuccess={() => setEditingAccount(null)}
+      />
     </div>
   );
 }

@@ -59,6 +59,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { CreateAccountDialog } from '@/components/modals/CreateAccountDialog';
 
 interface AccountsPageProps {
   triggerNewTransaction?: boolean;
@@ -126,6 +127,8 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
   const [editingTx, setEditingTx] = useState<string | null>(null);
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
+  const [editingAccount, setEditingAccount] = useState<typeof currentAccount | null>(null);
+  const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
   const [newTx, setNewTx] = useState({
     date: new Date(),
     payee: '',
@@ -252,6 +255,11 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
 
   const handleDeleteAccount = (accountId: string) => {
     setDeletingAccountId(accountId);
+  };
+
+  const handleEditAccount = (account: typeof currentAccount) => {
+    setEditingAccount(account);
+    setIsEditAccountOpen(true);
   };
 
   const confirmDeleteAccount = () => {
@@ -390,6 +398,13 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onClick={() => handleEditAccount(currentAccount)}
+                  className="cursor-pointer"
+                >
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Edit Account
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => handleDeleteAccount(currentAccount.id)}
                   className="cursor-pointer text-red-600 focus:text-red-600"
@@ -818,6 +833,14 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Account Dialog */}
+      <CreateAccountDialog
+        account={editingAccount || undefined}
+        open={isEditAccountOpen}
+        onOpenChange={setIsEditAccountOpen}
+        onSuccess={() => setEditingAccount(null)}
+      />
     </div>
   );
 }
