@@ -10,8 +10,16 @@ import {
   ArrowRightLeft,
   CheckCircle2,
   Pencil,
-  Trash2
+  Trash2,
+  GripVertical
 } from 'lucide-react';
+import {
+  DndContext,
+  DragEndEvent,
+  useDraggable,
+  useDroppable,
+  closestCenter
+} from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -30,6 +38,7 @@ import {
 import { MoveMoneyDialog } from '@/components/modals/MoveMoneyDialog';
 import { CreateCategoryDialog } from '@/components/modals/CreateCategoryDialog';
 import { CreateCategoryGroupDialog } from '@/components/modals/CreateCategoryGroupDialog';
+import { CategoryGroupSection } from '@/components/CategoryGroupSection';
 
 type FilterType = 'all' | 'underfunded' | 'overfunded' | 'available';
 
@@ -43,6 +52,7 @@ export default function BudgetPage() {
     monthlyAssignments,
     setCategoryAssignment,
     setCategoryGoal,
+    updateCategory,
     getCategoryActivity,
     getCategoryAvailable,
     getReadyToAssign,
@@ -247,6 +257,65 @@ export default function BudgetPage() {
     };
   }, [categories, currentMonth, monthlyAssignments, getCategoryActivity, getCategoryAvailable]);
 
+  // Calculate group subtotals for collapsed display
+  const groupSubtotals = useMemo(() => {
+    const subtotals: Record<string, {
+      goal: number;
+      assigned: number;
+      activity: number;
+      available: number;
+    }> = {};
+
+    categoryGroups.forEach(group => {
+      const groupCategories = categories.filter(c => c.groupId === group.id);
+
+      let totalGoal = 0;
+      let totalAssigned = 0;
+      let totalActivity = 0;
+      let totalAvailable = 0;
+
+      groupCategories.forEach(cat => {
+        totalGoal += cat.goal || 0;
+        totalAssigned += monthlyAssignments[currentBudgetId]?.[currentMonth]?.[cat.id] || 0;
+        totalActivity += getCategoryActivity(currentMonth, cat.id);
+        totalAvailable += getCategoryAvailable(currentMonth, cat.id);
+      });
+
+      subtotals[group.id] = {
+        goal: totalGoal,
+        assigned: totalAssigned,
+        activity: totalActivity,
+        available: totalAvailable
+      };
+    });
+
+    return subtotals;
+  }, [categoryGroups, categories, currentMonth, monthlyAssignments, currentBudgetId, getCategoryActivity, getCategoryAvailable]);
+
+  // Handle drag and drop for moving categories between groups
+  const handleDragEnd = (event: DragEndEvent) => {
+    const {active, over} = event;
+
+    if (!over) return; // Dropped outside valid zone
+
+    const categoryId = active.id as string;
+    const newGroupId = over.id as string;
+    const currentGroupId = active.data.current?.currentGroupId;
+
+    // Prevent no-op moves to same group
+    if (newGroupId === currentGroupId) return;
+
+    // Update category's groupId
+    updateCategory(categoryId, { groupId: newGroupId });
+
+    // Show success toast
+    const newGroup = categoryGroups.find(g => g.id === newGroupId);
+    toast({
+      title: "Category moved",
+      description: `Moved to "${newGroup?.name}"`
+    });
+  };
+
   return (
     <div className="flex h-full bg-slate-50">
       {/* Main Content */}
@@ -385,6 +454,7 @@ export default function BudgetPage() {
             </div>
 
             {/* Category Groups */}
+            <DndContext onDragEnd={handleDragEnd} collisionDetection={closestCenter}>
             {categoryGroups.map(group => {
               const groupCategories = categories.filter(c => {
                 if (c.groupId !== group.id) return false;
@@ -401,172 +471,30 @@ export default function BudgetPage() {
               if (groupCategories.length === 0 && filter !== 'all') return null;
 
               const isExpanded = expandedGroups[group.id] ?? true;
+              const subtotals = groupSubtotals[group.id] || { goal: 0, assigned: 0, activity: 0, available: 0 };
 
               return (
-                <div key={group.id} className="border-b border-slate-100">
-                  {/* Group Header */}
-                  <div className="flex items-center justify-between px-6 py-3 hover:bg-slate-50 transition-colors group/header">
-                    <button
-                      onClick={() => toggleGroup(group.id)}
-                      className="flex items-center gap-2 flex-1"
-                    >
-                      {isExpanded ? (
-                        <ChevronDown className="w-4 h-4 text-slate-400 transition-transform" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4 text-slate-400 transition-transform" />
-                      )}
-                      <span className="font-semibold text-slate-700 text-sm uppercase tracking-wide">
-                        {group.name}
-                      </span>
-                    </button>
-                    <div className="flex items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 opacity-0 group-hover/header:opacity-100 transition-opacity text-slate-400 hover:text-blue-600"
-                        onClick={() => handleEditGroup(group)}
-                      >
-                        <Pencil className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 opacity-0 group-hover/header:opacity-100 transition-opacity text-slate-400 hover:text-red-600"
-                        onClick={() => handleDeleteGroup(group)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                      <CreateCategoryDialog
-                        groupId={group.id}
-                        trigger={
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="opacity-0 group-hover/header:opacity-100 transition-opacity text-slate-500 hover:text-blue-600"
-                          >
-                            <Plus className="w-4 h-4 mr-1" />
-                            Add Category
-                          </Button>
-                        }
-                      />
-                    </div>
-                  </div>
-
-                  {/* Categories */}
-                  {isExpanded && groupCategories.map(category => {
-                    const assigned = monthlyAssignments[currentBudgetId]?.[currentMonth]?.[category.id] || 0;
-                    const activity = getCategoryActivity(currentMonth, category.id);
-                    const available = getCategoryAvailable(currentMonth, category.id);
-                    const goal = category.goal || 0;
-                    const isOverspent = available < 0;
-                    const isFunded = goal > 0 && assigned >= goal;
-                    const isPartiallyFunded = goal > 0 && assigned > 0 && assigned < goal;
-
-                    return (
-                      <div
-                        key={category.id}
-                        className="grid grid-cols-[1fr_140px_140px_140px_140px] gap-4 px-6 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 group"
-                      >
-                        {/* Category Name */}
-                        <div className="flex flex-col justify-center">
-                          <div className="font-medium text-slate-700">
-                            {category.name}
-                          </div>
-                          {isOverspent && (
-                            <div className="text-xs text-red-600 mt-0.5">
-                              Overspent: {formatCurrency(Math.abs(available))} of {formatCurrency(assigned)}
-                            </div>
-                          )}
-                          {!isOverspent && goal > 0 && (
-                            <div className={cn(
-                              "text-xs mt-0.5",
-                              isFunded ? "text-green-600" : isPartiallyFunded ? "text-orange-500" : "text-slate-400"
-                            )}>
-                              {formatCurrency(assigned)} / {formatCurrency(goal)}
-                              {isFunded && " ✓"}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Goal */}
-                        <div className="flex items-center justify-end">
-                          <Input
-                            type="number"
-                            step="any"
-                            min="0"
-                            className="w-full text-right h-9 border-slate-200 hover:border-slate-300 focus:border-blue-500 transition-colors"
-                            value={goal || ''}
-                            placeholder="0.00"
-                            onClick={(e) => (e.target as HTMLInputElement).select()}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              const rounded = Math.round(val * 100) / 100;
-                              setCategoryGoal(category.id, rounded);
-                            }}
-                          />
-                        </div>
-
-                        {/* Assigned */}
-                        <div className="flex items-center justify-end">
-                          <Input
-                            type="number"
-                            step="any"
-                            min="0"
-                            className="w-full text-right h-9 border-slate-200 hover:border-slate-300 focus:border-blue-500 transition-colors"
-                            value={assigned || ''}
-                            placeholder="0.00"
-                            onClick={(e) => (e.target as HTMLInputElement).select()}
-                            onChange={(e) => {
-                              const val = parseFloat(e.target.value) || 0;
-                              const rounded = Math.round(val * 100) / 100;
-                              setCategoryAssignment(currentMonth, category.id, rounded);
-                            }}
-                          />
-                        </div>
-
-                        {/* Activity */}
-                        <div className="flex items-center justify-end">
-                          <span className="text-sm font-medium text-slate-600">
-                            {formatCurrency(activity)}
-                          </span>
-                        </div>
-
-                        {/* Available */}
-                        <div className="flex items-center justify-end gap-2">
-                          {available < 0 ? (
-                            <Badge
-                              variant="destructive"
-                              className="bg-red-500 hover:bg-red-600 text-white font-semibold px-3 py-1 rounded-full"
-                            >
-                              {formatCurrency(available)}
-                            </Badge>
-                          ) : (
-                            <span className={cn(
-                              "text-sm font-semibold",
-                              available > 0 ? "text-slate-700" : "text-slate-400"
-                            )}>
-                              {formatCurrency(available)}
-                            </span>
-                          )}
-                          <MoveMoneyDialog
-                            sourceCategoryId={category.id}
-                            trigger={
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-blue-600"
-                              >
-                                <ArrowRightLeft className="w-3.5 h-3.5" />
-                              </Button>
-                            }
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                <CategoryGroupSection
+                  key={group.id}
+                  group={group}
+                  categories={groupCategories}
+                  isExpanded={isExpanded}
+                  onToggle={() => toggleGroup(group.id)}
+                  onEdit={() => handleEditGroup(group)}
+                  onDelete={() => handleDeleteGroup(group)}
+                  currentMonth={currentMonth}
+                  currentBudgetId={currentBudgetId}
+                  monthlyAssignments={monthlyAssignments}
+                  getCategoryActivity={getCategoryActivity}
+                  getCategoryAvailable={getCategoryAvailable}
+                  setCategoryAssignment={setCategoryAssignment}
+                  setCategoryGoal={setCategoryGoal}
+                  formatCurrency={formatCurrency}
+                  groupSubtotals={subtotals}
+                />
               );
             })}
+            </DndContext>
 
             {/* Add Category Group Button */}
             <div className="p-6">
