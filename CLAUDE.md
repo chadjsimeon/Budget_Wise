@@ -22,6 +22,12 @@ Budget-Wise is a zero-based budgeting application built with React, Express, and
 ### Type Checking
 - `npm run check` - Run TypeScript type checking across the codebase
 
+### Testing
+- `npm test` - Run all tests with Vitest
+- `npm test <filename>` - Run specific test file (e.g., `npm test Budget.spec.tsx`)
+- `npm test -- --watch` - Run tests in watch mode
+- `npm test -- --coverage` - Run tests with coverage report
+
 ## Architecture
 
 ### Project Structure
@@ -157,3 +163,229 @@ The application supports **multiple budgets** with budget-scoped data:
 ### Storage Version Management
 
 The Zustand store uses a `STORAGE_VERSION` constant (currently 2) to manage data migrations. Incrementing this version will reset all localStorage data to initial state. This is useful when making breaking changes to the data model.
+
+## Testing
+
+### Testing Stack
+
+- **Test Runner**: Vitest v4.0.16 with jsdom environment
+- **Testing Library**: @testing-library/react v16.3.1
+- **User Interactions**: @testing-library/user-event
+- **Custom Matchers**: @testing-library/jest-dom (provides `toBeInTheDocument()`, `toHaveTextContent()`, etc.)
+
+### Test Configuration
+
+**Vitest Config** (`vite.config.ts`):
+```typescript
+test: {
+  globals: true,              // Auto-import describe, test, expect
+  environment: "jsdom",        // DOM simulation for React components
+  setupFiles: ["./client/src/test/setup.ts"],
+  css: false,                  // Skip CSS processing in tests
+}
+```
+
+**Test Setup** (`client/src/test/setup.ts`):
+- Imports jest-dom matchers for vitest
+- Clears localStorage before each test (critical for Zustand persistence)
+
+### Writing Tests
+
+#### File Naming and Location
+- Test files use `.spec.tsx` or `.spec.ts` extension
+- Place tests next to the components they test (e.g., `Budget.spec.tsx` next to `Budget.tsx`)
+- Shared test utilities in `client/src/test/`
+
+#### BDD Format (Preferred)
+Use Given/When/Then comments to structure tests:
+
+```typescript
+test('opens modal when Add Category Group button is clicked', async () => {
+  // Given: The component renders
+  const user = userEvent.setup();
+  render(<BudgetPage />);
+
+  // When: The Add Category Group button is clicked
+  const addButton = screen.getByRole('button', { name: /add category group/i });
+  await user.click(addButton);
+
+  // Then: The modal opens with the correct info
+  const dialog = await screen.findByRole('dialog');
+  expect(dialog).toBeInTheDocument();
+});
+```
+
+#### Testing Patterns
+
+**1. Component Rendering**
+```typescript
+import { render, screen } from '@testing-library/react';
+import MyComponent from './MyComponent';
+
+test('renders component', () => {
+  render(<MyComponent />);
+  expect(screen.getByText(/expected text/i)).toBeInTheDocument();
+});
+```
+
+**2. User Interactions**
+```typescript
+import userEvent from '@testing-library/user-event';
+
+test('handles user interaction', async () => {
+  const user = userEvent.setup();
+  render(<MyComponent />);
+
+  const button = screen.getByRole('button', { name: /click me/i });
+  await user.click(button);
+
+  expect(screen.getByText(/success/i)).toBeInTheDocument();
+});
+```
+
+**3. Async Elements (Radix UI Dialogs, Portals)**
+Use `findBy*` queries (async) for elements that appear after user interaction:
+
+```typescript
+// Dialog renders via portal asynchronously
+const dialog = await screen.findByRole('dialog');
+expect(dialog).toBeInTheDocument();
+```
+
+**4. Query Priorities** (from Testing Library best practices)
+1. `getByRole` - Accessible queries (preferred)
+2. `getByLabelText` - Forms and labels
+3. `getByPlaceholderText` - Input placeholders
+4. `getByText` - Non-interactive text
+5. `getByTestId` - Last resort
+
+### Testing Zustand Store
+
+**Strategy**: Use the REAL store with localStorage clearing
+
+**Why**:
+- Zustand with persist middleware is tightly coupled to localStorage
+- Mocking the entire store is complex and fragile
+- Real store provides more realistic testing
+- `localStorage.clear()` in `beforeEach` ensures test isolation
+
+**Store State**: The store auto-initializes with default state:
+- `currentBudgetId: 'budget1'`
+- `budgets: [{ id: 'budget1', name: 'My Budget', ... }]`
+- `categoryGroups: []`, `categories: []`, `transactions: []`
+- `currentMonth: format(new Date(), 'yyyy-MM')`
+
+**Pre-populating State** (if needed):
+```typescript
+import { useStore } from '@/lib/store';
+
+beforeEach(() => {
+  const { addCategoryGroup } = useStore.getState();
+  addCategoryGroup({ name: 'Test Group' });
+});
+```
+
+### Key Testing Considerations
+
+1. **localStorage Persistence**: Always cleared in `beforeEach` hook to prevent test pollution
+
+2. **Radix UI Dialogs**:
+   - Render asynchronously via portals
+   - Use `await screen.findByRole('dialog')` instead of `getByRole`
+   - Dialog content renders outside the component tree
+
+3. **Date Dependencies**:
+   - Components use current date for `currentMonth`
+   - Tests should accept dynamic dates or mock date-fns if specific dates are required
+
+4. **Toast Notifications**:
+   - Use module-level state, don't need special setup
+   - Can verify toast content in DOM after actions
+
+5. **Helper Functions**:
+   - Extract repeated assertions into helper functions for readability
+   - Example: `verifyAddCategoryGroupModal()` function for modal assertions
+
+### Common Test Scenarios
+
+**Testing Modal Dialogs**:
+```typescript
+test('opens and verifies modal content', async () => {
+  const user = userEvent.setup();
+  render(<Component />);
+
+  // Open modal
+  await user.click(screen.getByRole('button', { name: /open modal/i }));
+
+  // Wait for portal render
+  const dialog = await screen.findByRole('dialog');
+
+  // Verify content
+  expect(screen.getByRole('heading', { name: /modal title/i })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /submit/i })).toBeInTheDocument();
+});
+```
+
+**Testing Form Inputs**:
+```typescript
+test('handles form submission', async () => {
+  const user = userEvent.setup();
+  render(<FormComponent />);
+
+  const input = screen.getByPlaceholderText(/enter name/i);
+  await user.type(input, 'Test Name');
+
+  expect(input).toHaveValue('Test Name');
+
+  await user.click(screen.getByRole('button', { name: /submit/i }));
+
+  // Verify submission result
+  expect(screen.getByText(/success/i)).toBeInTheDocument();
+});
+```
+
+**Testing Store Integration**:
+```typescript
+test('updates store on user action', async () => {
+  const user = userEvent.setup();
+  render(<Component />);
+
+  await user.click(screen.getByRole('button', { name: /add item/i }));
+
+  const { items } = useStore.getState();
+  expect(items).toHaveLength(1);
+});
+```
+
+### Running Tests
+
+```bash
+# Run all tests
+npm test
+
+# Run specific test file
+npm test Budget.spec.tsx
+
+# Watch mode (re-run on file changes)
+npm test -- --watch
+
+# Run with coverage
+npm test -- --coverage
+
+# Run tests matching pattern
+npm test -- --grep "Category Group"
+```
+
+### Troubleshooting
+
+**Issue**: `Cannot find package 'jsdom'`
+- **Solution**: Install jsdom: `npm install --save-dev jsdom`
+
+**Issue**: `toBeInTheDocument is not a function`
+- **Solution**: Ensure `@testing-library/jest-dom/vitest` is imported in setup file
+
+**Issue**: Dialog/Modal not found
+- **Solution**: Use async `findByRole` instead of sync `getByRole` for portal-rendered elements
+
+**Issue**: Tests fail due to previous test state
+- **Solution**: Verify `localStorage.clear()` is in `beforeEach` hook in setup file

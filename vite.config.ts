@@ -48,4 +48,10 @@ export default defineConfig({
       deny: ["**/.*"],
     },
   },
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: ["./client/src/test/setup.ts"],
+    css: false,
+  },
 });
