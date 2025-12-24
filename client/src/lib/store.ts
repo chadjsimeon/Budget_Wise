@@ -22,6 +22,11 @@ export interface Account {
   type: AccountType;
   balance: number;
   isActive: boolean;
+  // Loan-specific fields
+  interestRate?: number;      // Annual percentage rate (e.g., 12.0 for 12%)
+  monthlyPayment?: number;    // Required monthly payment amount
+  originalBalance?: number;   // Original loan amount (for progress calculation)
+  loanStartDate?: string;     // When the loan started (for calculating original schedule)
 }
 
 export interface TrackingAccount {
@@ -182,7 +187,7 @@ const INITIAL_TRANSACTIONS: Transaction[] = [];
 
 const INITIAL_ASSIGNMENTS: MonthlyAssignments = {};
 
-const STORAGE_VERSION = 3; // Increment this to reset all data
+const STORAGE_VERSION = 4; // Increment this to reset all data
 
 export const useStore = create<AppState>()(
   persist(

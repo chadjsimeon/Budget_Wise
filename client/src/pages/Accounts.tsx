@@ -43,6 +43,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
 import { cn } from '@/lib/utils';
+import { LoanPayoffPlanner } from '@/components/LoanPayoffPlanner';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -689,9 +690,16 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
         </div>
       )}
 
-      {/* Transactions Table */}
-      <div className="flex-1 overflow-auto">
-        <Table>
+      {/* Loan Planner or Transactions Table */}
+      {currentAccount && currentAccount.type === 'loan' ? (
+        <LoanPayoffPlanner
+          account={currentAccount}
+          transactions={accountTransactions}
+          formatCurrency={formatCurrency}
+        />
+      ) : (
+        <div className="flex-1 overflow-auto">
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[50px]">
@@ -796,7 +804,8 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
             )}
           </TableBody>
         </Table>
-      </div>
+        </div>
+      )}
 
       {/* Delete Transaction Confirmation Dialog */}
       <AlertDialog open={!!deletingTxId} onOpenChange={(open) => !open && setDeletingTxId(null)}>

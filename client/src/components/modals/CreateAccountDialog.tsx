@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore, AccountType, Account } from '@/lib/store';
+import { format } from 'date-fns';
 import { 
   Dialog, 
   DialogContent, 
@@ -39,7 +40,9 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
   const [formData, setFormData] = useState({
     name: '',
     type: defaultType || 'checking',
-    balance: ''
+    balance: '',
+    interestRate: '',      // For loans
+    monthlyPayment: ''     // For loans
   });
 
   // Initialize form when editing
@@ -48,13 +51,18 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
       setFormData({
         name: account.name,
         type: account.type,
-        balance: account.balance.toString()
+        // For loans/credit, show as positive (amount owed) even though stored as negative
+        balance: Math.abs(account.balance).toString(),
+        interestRate: account.interestRate?.toString() || '',
+        monthlyPayment: account.monthlyPayment?.toString() || ''
       });
     } else if (!open) {
       setFormData({
         name: '',
         type: defaultType || 'checking',
-        balance: ''
+        balance: '',
+        interestRate: '',
+        monthlyPayment: ''
       });
     }
   }, [account, open, defaultType]);
@@ -69,22 +77,51 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
     }
 
     if (isEditMode && account) {
-      // Update existing account - only name can change
-      updateAccount(account.id, { name: formData.name });
+      // Update existing account
+      const balanceAmount = parseFloat(formData.balance) || 0;
+      const updates: Partial<Account> = {
+        name: formData.name
+      };
+
+      // For loans and credit cards, allow editing balance and loan-specific fields
+      if (account.type === 'loan' || account.type === 'credit') {
+        updates.balance = -Math.abs(balanceAmount); // Store as negative
+        if (account.type === 'loan') {
+          updates.interestRate = parseFloat(formData.interestRate) || 0;
+          updates.monthlyPayment = parseFloat(formData.monthlyPayment) || 0;
+        }
+      }
+
+      updateAccount(account.id, updates);
       onSuccess?.();
     } else {
       // Create new account
-      const newAccount = {
+      const balanceAmount = parseFloat(formData.balance) || 0;
+      const newAccount: Omit<Account, 'id' | 'budgetId'> = {
         name: formData.name,
         type: formData.type as AccountType,
-        balance: parseFloat(formData.balance) || 0
+        // Loans and credit cards are liabilities, so balance should be negative
+        balance: (formData.type === 'loan' || formData.type === 'credit') ? -Math.abs(balanceAmount) : balanceAmount,
+        isActive: true,
+        ...(formData.type === 'loan' && {
+          interestRate: parseFloat(formData.interestRate) || 0,
+          monthlyPayment: parseFloat(formData.monthlyPayment) || 0,
+          originalBalance: Math.abs(balanceAmount), // Store as positive for progress calculation
+          loanStartDate: format(new Date(), 'yyyy-MM-dd')
+        })
       };
       addAccount(newAccount);
     }
 
     setOpen(false);
     if (!isEditMode) {
-      setFormData({ name: '', type: defaultType || 'checking', balance: '' });
+      setFormData({
+        name: '',
+        type: defaultType || 'checking',
+        balance: '',
+        interestRate: '',
+        monthlyPayment: ''
+      });
     }
   };
 
@@ -94,7 +131,11 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
         <DialogTitle>{isEditMode ? 'Edit Account' : 'Add New Account'}</DialogTitle>
         <DialogDescription>
           {isEditMode
-            ? 'Update the account name. Account type cannot be changed.'
+            ? account?.type === 'loan'
+              ? 'Update loan details including balance, interest rate, and monthly payment.'
+              : account?.type === 'credit'
+              ? 'Update credit card details. Account type cannot be changed.'
+              : 'Update the account name. Account type cannot be changed.'
             : 'Track a new bank account, credit card, or loan.'}
         </DialogDescription>
       </DialogHeader>
@@ -133,22 +174,67 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
             </SelectContent>
           </Select>
         </div>
-        {!isEditMode && (
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="balance" className="text-right">
-              Balance
-            </Label>
-            <Input
-              id="balance"
-              type="number"
-              step="0.01"
-              value={formData.balance}
-              onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
-              className="col-span-3"
-              placeholder="0.00"
-              required
-            />
-          </div>
+        {/* Show balance field for new accounts OR when editing loans/credit */}
+        {(!isEditMode || (isEditMode && (account?.type === 'loan' || account?.type === 'credit'))) && (
+          <>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="balance" className="text-right">
+                {(formData.type === 'loan' || formData.type === 'credit') ? 'Amount Owed' : 'Balance'}
+              </Label>
+              <Input
+                id="balance"
+                type="number"
+                step="0.01"
+                value={formData.balance}
+                onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
+                className="col-span-3"
+                placeholder="0.00"
+                required
+              />
+            </div>
+          </>
+        )}
+
+        {/* Show loan fields for new loans OR when editing existing loans */}
+        {((isEditMode && account?.type === 'loan') || (!isEditMode && formData.type === 'loan')) && (
+              <>
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="interestRate" className="text-right">
+                    Interest Rate
+                  </Label>
+                  <div className="col-span-3 flex items-center gap-2">
+                    <Input
+                      id="interestRate"
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max="100"
+                      placeholder="12.00"
+                      value={formData.interestRate || ''}
+                      onChange={(e) => setFormData({...formData, interestRate: e.target.value})}
+                      required
+                    />
+                    <span className="text-sm text-slate-500">% APR</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-4 items-center gap-4">
+                  <Label htmlFor="monthlyPayment" className="text-right">
+                    Monthly Payment
+                  </Label>
+                  <Input
+                    id="monthlyPayment"
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="1867.89"
+                    value={formData.monthlyPayment || ''}
+                    onChange={(e) => setFormData({...formData, monthlyPayment: e.target.value})}
+                    className="col-span-3"
+                    required
+                  />
+                </div>
+              </>
         )}
         <DialogFooter>
           <Button type="submit">{isEditMode ? 'Save Changes' : 'Create Account'}</Button>
