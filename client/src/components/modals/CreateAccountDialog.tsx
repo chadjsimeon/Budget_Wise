@@ -33,6 +33,7 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
 
   const addAccount = useStore(state => state.addAccount);
   const updateAccount = useStore(state => state.updateAccount);
+  const addTransaction = useStore(state => state.addTransaction);
 
   // Determine if we're in edit mode
   const isEditMode = !!account;
@@ -100,8 +101,8 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
       const newAccount: Omit<Account, 'id' | 'budgetId'> = {
         name: formData.name,
         type: formData.type as AccountType,
-        // Loans and credit cards are liabilities, so balance should be negative
-        balance: (formData.type === 'loan' || formData.type === 'credit') ? -Math.abs(balanceAmount) : balanceAmount,
+        // Start with balance 0 - the opening balance transaction will set the correct balance
+        balance: 0,
         isActive: true,
         ...(formData.type === 'loan' && {
           interestRate: parseFloat(formData.interestRate) || 0,
@@ -110,7 +111,22 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
           loanStartDate: format(new Date(), 'yyyy-MM-dd')
         })
       };
-      addAccount(newAccount);
+      const createdAccount = addAccount(newAccount);
+
+      // Create opening balance transaction if balance is not zero
+      if (balanceAmount !== 0) {
+        addTransaction({
+          accountId: createdAccount.id,
+          date: format(new Date(), 'yyyy-MM-dd'),
+          payee: 'Opening Balance',
+          amount: (formData.type === 'loan' || formData.type === 'credit')
+            ? -Math.abs(balanceAmount)
+            : balanceAmount,
+          memo: `Initial balance for ${formData.name}`,
+          cleared: true,
+          isOpeningBalance: true
+        });
+      }
     }
 
     setOpen(false);

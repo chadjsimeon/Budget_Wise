@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { useStore, Account } from '@/lib/store';
+import { useStore, Account, BUDGET_ACCOUNT_TYPES } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import {
   Wallet,
@@ -60,7 +60,7 @@ export function Sidebar() {
   // Filter accounts by current budget
   const budgetAccounts = accounts.filter(a =>
     a.budgetId === currentBudgetId &&
-    ['checking', 'savings'].includes(a.type) &&
+    BUDGET_ACCOUNT_TYPES.includes(a.type) &&
     a.isActive
   );
   const loansAndCredit = accounts.filter(a =>

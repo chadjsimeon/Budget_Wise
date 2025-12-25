@@ -2,8 +2,13 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { format } from 'date-fns';
 
-export type AccountType = 'checking' | 'savings' | 'credit' | 'loan';
+export type AccountType = 'checking' | 'savings' | 'cash' | 'credit' | 'loan';
 export type TrackingAccountType = 'asset' | 'liability';
+
+// Account types that contribute to "Ready to Assign" calculation
+// Only liquid asset accounts (checking, savings, cash) are included
+// Credit cards and loans are excluded as they represent liabilities
+export const BUDGET_ACCOUNT_TYPES: readonly AccountType[] = ['checking', 'savings', 'cash'] as const;
 
 export interface Budget {
   id: string;
@@ -68,6 +73,7 @@ export interface Transaction {
   amount: number;
   memo?: string;
   cleared: boolean;
+  isOpeningBalance?: boolean;
 }
 
 export interface BudgetTemplate {
@@ -111,7 +117,7 @@ interface AppState {
   setMonth: (month: string) => void;
 
   // Account Actions (Budget-specific)
-  addAccount: (account: Omit<Account, 'id' | 'budgetId'>) => void;
+  addAccount: (account: Omit<Account, 'id' | 'budgetId'>) => Account;
   updateAccount: (id: string, updates: Partial<Account>) => void;
   deleteAccount: (id: string) => void;
 
@@ -187,7 +193,7 @@ const INITIAL_TRANSACTIONS: Transaction[] = [];
 
 const INITIAL_ASSIGNMENTS: MonthlyAssignments = {};
 
-const STORAGE_VERSION = 4; // Increment this to reset all data
+const STORAGE_VERSION = 5; // Increment this to reset all data
 
 export const useStore = create<AppState>()(
   persist(
@@ -251,14 +257,20 @@ export const useStore = create<AppState>()(
       setMonth: (month) => set({ currentMonth: month }),
 
       // ============= ACCOUNTS =============
-      addAccount: (account) => set((state) => ({
-        accounts: [...state.accounts, {
+      addAccount: (account) => {
+        const newAccount = {
           ...account,
           id: Math.random().toString(36).substr(2, 9),
-          budgetId: state.currentBudgetId,
+          budgetId: get().currentBudgetId,
           isActive: true
-        }]
-      })),
+        };
+
+        set((state) => ({
+          accounts: [...state.accounts, newAccount]
+        }));
+
+        return newAccount;
+      },
 
       updateAccount: (id, updates) => set((state) => ({
         accounts: state.accounts.map(a => a.id === id ? { ...a, ...updates } : a)
@@ -583,9 +595,14 @@ export const useStore = create<AppState>()(
       getReadyToAssign: (month) => {
         const state = get();
 
-        // Only count ACTIVE accounts in current budget
+        // Only count budget accounts (checking, savings, cash) that are active
+        // Excludes credit cards and loans as they are liabilities, not available funds
         const totalAccountBalance = state.accounts
-          .filter(a => a.isActive && a.budgetId === state.currentBudgetId)
+          .filter(a =>
+            a.isActive &&
+            a.budgetId === state.currentBudgetId &&
+            BUDGET_ACCOUNT_TYPES.includes(a.type)
+          )
           .reduce((sum, a) => sum + a.balance, 0);
 
         const budgetAssignments = state.monthlyAssignments[state.currentBudgetId] || {};

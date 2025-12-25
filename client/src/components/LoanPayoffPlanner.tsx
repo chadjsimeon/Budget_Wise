@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Account, Transaction } from '@/lib/store';
+import { Account, Transaction, useStore } from '@/lib/store';
 import {
   calculateAmortization,
   calculateOriginalSchedule,
@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
 import { Calculator } from 'lucide-react';
+import { PayoffSimulator } from '@/components/modals/PayoffSimulator';
 
 interface LoanPayoffPlannerProps {
   account: Account;
@@ -43,6 +44,11 @@ function MetricCard({ value, label, className = '' }: MetricCardProps) {
 
 export function LoanPayoffPlanner({ account, transactions, formatCurrency }: LoanPayoffPlannerProps) {
   const [showSimulator, setShowSimulator] = useState(false);
+  const updateAccount = useStore(state => state.updateAccount);
+
+  const handleSavePayment = (newPayment: number) => {
+    updateAccount(account.id, { monthlyPayment: newPayment });
+  };
 
   // Calculate loan projection
   const projection = useMemo((): LoanProjection | null => {
@@ -301,22 +307,14 @@ export function LoanPayoffPlanner({ account, transactions, formatCurrency }: Loa
         </AccordionItem>
       </Accordion>
 
-      {/* Payoff Simulator Modal - Placeholder for now */}
-      {showSimulator && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-2xl mx-4">
-            <CardHeader>
-              <CardTitle>Payoff Simulator</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-slate-500">Payoff simulator coming soon...</p>
-              <Button onClick={() => setShowSimulator(false)} className="mt-4">
-                Close
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      )}
+      {/* Payoff Simulator Modal */}
+      <PayoffSimulator
+        account={account}
+        open={showSimulator}
+        onOpenChange={setShowSimulator}
+        formatCurrency={formatCurrency}
+        onSavePayment={handleSavePayment}
+      />
     </div>
   );
 }
