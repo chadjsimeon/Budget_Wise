@@ -88,7 +88,12 @@ export function PayoffSimulator({
   const chartData = useMemo(() => {
     if (!projection) return [];
 
-    const data = [];
+    const data: Array<{
+      month: number;
+      current: number;
+      original: number | null;
+      label: string;
+    }> = [];
 
     // Sample the schedule to keep chart readable
     const sampleRate = Math.max(1, Math.floor(projection.schedule.length / 20));

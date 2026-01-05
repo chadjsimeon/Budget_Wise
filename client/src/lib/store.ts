@@ -193,6 +193,28 @@ const INITIAL_TRANSACTIONS: Transaction[] = [];
 
 const INITIAL_ASSIGNMENTS: MonthlyAssignments = {};
 
+// Default category structure for new budgets
+const DEFAULT_CATEGORY_STRUCTURE = [
+  {
+    groupName: 'Bills',
+    categories: ['Rent/Mortgage', 'Phone', 'Internet', 'Utilities']
+  },
+  {
+    groupName: 'Needs',
+    categories: ['Groceries', 'Transportation', 'Medical expenses', 'Emergency fund']
+  },
+  {
+    groupName: 'Wants',
+    categories: [
+      'Dining out',
+      'Entertainment',
+      'Vacation',
+      'Stuff I forgot to plan for',
+      'Budget Wise subscription'
+    ]
+  }
+];
+
 const STORAGE_VERSION = 5; // Increment this to reset all data
 
 export const useStore = create<AppState>()(
@@ -212,14 +234,40 @@ export const useStore = create<AppState>()(
 
       // ============= BUDGETS =============
       addBudget: (budget) => set((state) => {
+        // Create the budget
         const newBudget: Budget = {
           ...budget,
           id: Math.random().toString(36).substr(2, 9),
           createdAt: new Date()
         };
+
+        // Generate default category groups
+        const newGroups: CategoryGroup[] = DEFAULT_CATEGORY_STRUCTURE.map(template => ({
+          id: Math.random().toString(36).substr(2, 9),
+          budgetId: newBudget.id,
+          name: template.groupName
+        }));
+
+        // Generate default categories linked to their groups
+        const newCategories: Category[] = [];
+        DEFAULT_CATEGORY_STRUCTURE.forEach((template, idx) => {
+          const groupId = newGroups[idx].id;
+          template.categories.forEach(categoryName => {
+            newCategories.push({
+              id: Math.random().toString(36).substr(2, 9),
+              budgetId: newBudget.id,
+              groupId: groupId,
+              name: categoryName
+            });
+          });
+        });
+
+        // Return updated state with budget + defaults
         return {
           budgets: [...state.budgets, newBudget],
-          currentBudgetId: newBudget.id
+          currentBudgetId: newBudget.id,
+          categoryGroups: [...state.categoryGroups, ...newGroups],
+          categories: [...state.categories, ...newCategories]
         };
       }),
 
@@ -321,13 +369,6 @@ export const useStore = create<AppState>()(
         const updatedAccounts = state.accounts.map(acc => {
           if (acc.id === transaction.accountId) {
             const newBalance = acc.balance + transaction.amount;
-            
-            // 🎉 AUTO-CLOSE LOANS FEATURE
-            if (acc.type === 'loan' && newBalance >= 0) {
-              console.log(`🎉 Loan "${acc.name}" paid off! Auto-closing.`);
-              return { ...acc, balance: newBalance, isActive: false };
-            }
-            
             return { ...acc, balance: newBalance };
           }
           return acc;
@@ -354,12 +395,6 @@ export const useStore = create<AppState>()(
         updatedAccounts = updatedAccounts.map(acc => {
           if (acc.id === newTx.accountId) {
             const newBalance = acc.balance + newTx.amount;
-            
-            if (acc.type === 'loan' && newBalance >= 0 && acc.isActive) {
-              console.log(`🎉 Loan "${acc.name}" paid off!`);
-              return { ...acc, balance: newBalance, isActive: false };
-            }
-            
             return { ...acc, balance: newBalance };
           }
           return acc;
@@ -374,24 +409,56 @@ export const useStore = create<AppState>()(
       deleteTransaction: (id) => set((state) => {
         const tx = state.transactions.find(t => t.id === id);
         if (!tx) return state;
-        
-        const updatedAccounts = state.accounts.map(acc => {
+
+        // Check if this is a transfer transaction
+        const isTransfer = tx.payee.startsWith('Transfer to') || tx.payee.startsWith('Transfer from');
+        let pairedTransferId: string | null = null;
+
+        if (isTransfer) {
+          // Find the paired transfer transaction
+          // It should have the same date and memo, but opposite direction
+          pairedTransferId = state.transactions.find(t =>
+            t.id !== id &&
+            t.date === tx.date &&
+            t.memo === tx.memo &&
+            t.accountId !== tx.accountId &&
+            Math.abs(t.amount) === Math.abs(tx.amount) &&
+            (
+              (tx.payee.startsWith('Transfer to') && t.payee.startsWith('Transfer from')) ||
+              (tx.payee.startsWith('Transfer from') && t.payee.startsWith('Transfer to'))
+            )
+          )?.id || null;
+        }
+
+        const pairedTx = pairedTransferId ? state.transactions.find(t => t.id === pairedTransferId) : null;
+
+        // Update accounts - reverse the balance changes from both transactions
+        let updatedAccounts = state.accounts.map(acc => {
+          let newBalance = acc.balance;
+
+          // Reverse the primary transaction
           if (acc.id === tx.accountId) {
-            const newBalance = acc.balance - tx.amount;
-            
-            // Reactivate loan if it goes back into debt
-            if (acc.type === 'loan' && !acc.isActive && newBalance < 0) {
-              console.log(`🔄 Reactivating "${acc.name}"`);
-              return { ...acc, balance: newBalance, isActive: true };
-            }
-            
+            newBalance = acc.balance - tx.amount;
+          }
+
+          // Reverse the paired transaction if it exists
+          if (pairedTx && acc.id === pairedTx.accountId) {
+            newBalance = acc.balance - pairedTx.amount;
+          }
+
+          // Update balance for affected accounts
+          if (acc.id === tx.accountId || (pairedTx && acc.id === pairedTx.accountId)) {
             return { ...acc, balance: newBalance };
           }
+
           return acc;
         });
-        
+
+        // Remove both transactions if it's a transfer, otherwise just the one
+        const transactionsToRemove = pairedTransferId ? [id, pairedTransferId] : [id];
+
         return {
-          transactions: state.transactions.filter(t => t.id !== id),
+          transactions: state.transactions.filter(t => !transactionsToRemove.includes(t.id)),
           accounts: updatedAccounts
         };
       }),

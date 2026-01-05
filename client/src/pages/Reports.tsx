@@ -17,7 +17,7 @@ export default function ReportsPage() {
     transactions: allTransactions,
     categories: allCategories,
     categoryGroups: allCategoryGroups,
-    budgetAssignments
+    monthlyAssignments
   } = useStore();
 
   // Filter by current budget

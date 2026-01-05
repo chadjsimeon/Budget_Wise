@@ -153,6 +153,12 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
   const handleAddTransaction = () => {
     const amount = parseFloat(newTx.amount);
 
+    // Validate amount is entered and greater than 0
+    if (!newTx.amount || isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount greater than 0');
+      return;
+    }
+
     if (newTx.type === 'transfer') {
       // Handle transfer between accounts
       if (!newTx.accountId || !newTx.toAccountId) {

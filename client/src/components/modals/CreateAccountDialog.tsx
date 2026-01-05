@@ -252,7 +252,38 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
                 </div>
               </>
         )}
-        <DialogFooter>
+        <DialogFooter className="flex justify-between items-center">
+          {isEditMode && account ? (
+            account.isActive ? (
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => {
+                  if (confirm(`Are you sure you want to close "${account.name}"? This will move it to the Closed Accounts section.`)) {
+                    updateAccount(account.id, { isActive: false });
+                    setOpen(false);
+                  }
+                }}
+              >
+                Close Account
+              </Button>
+            ) : (
+              <Button
+                type="button"
+                variant="default"
+                onClick={() => {
+                  if (confirm(`Are you sure you want to reopen "${account.name}"?`)) {
+                    updateAccount(account.id, { isActive: true });
+                    setOpen(false);
+                  }
+                }}
+              >
+                Reopen Account
+              </Button>
+            )
+          ) : (
+            <div></div>
+          )}
           <Button type="submit">{isEditMode ? 'Save Changes' : 'Create Account'}</Button>
         </DialogFooter>
       </form>
