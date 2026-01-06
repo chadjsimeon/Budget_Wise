@@ -59,12 +59,18 @@ export function CreateBudgetDialog({ trigger, open: controlledOpen, onOpenChange
 
   const { addBudget } = useStore();
 
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<{
+    name: string;
+    currency: string;
+    currencyPlacement: 'before' | 'after';
+    numberFormat: '1,234.56' | '1.234,56' | '1 234.56' | '1 234,56';
+    dateFormat: 'DD/MM/YYYY' | 'MM/DD/YYYY' | 'YYYY-MM-DD';
+  }>({
     name: '',
     currency: 'TTD',
-    currencyPlacement: 'before' as const,
-    numberFormat: '1,234.56' as const,
-    dateFormat: 'DD/MM/YYYY' as const,
+    currencyPlacement: 'before',
+    numberFormat: '1,234.56',
+    dateFormat: 'DD/MM/YYYY',
   });
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -155,7 +161,7 @@ export function CreateBudgetDialog({ trigger, open: controlledOpen, onOpenChange
               </Label>
               <Select
                 value={formData.currencyPlacement}
-                onValueChange={(val: 'before' | 'after') => setFormData({ ...formData, currencyPlacement: val })}
+                onValueChange={(val) => setFormData({ ...formData, currencyPlacement: val as 'before' | 'after' })}
               >
                 <SelectTrigger className="col-span-3">
                   <SelectValue />

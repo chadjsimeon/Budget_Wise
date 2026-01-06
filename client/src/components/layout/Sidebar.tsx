@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'wouter';
-import { useStore } from '@/lib/store';
+import { useStore, Account, BUDGET_ACCOUNT_TYPES } from '@/lib/store';
 import { cn } from '@/lib/utils';
 import {
   Wallet,
@@ -14,7 +14,8 @@ import {
   ChevronDown,
   Building2,
   TrendingUp,
-  Trash2
+  Trash2,
+  Pencil
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { CreateAccountDialog } from '@/components/modals/CreateAccountDialog';
@@ -51,24 +52,31 @@ export function Sidebar() {
   } = useStore();
 
   const [budgetToDelete, setBudgetToDelete] = useState<string | null>(null);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
 
   const currentBudget = budgets.find(b => b.id === currentBudgetId);
 
   // Filter accounts by current budget
-  const budgetAccounts = accounts.filter(a =>
+  const cashAccounts = accounts.filter(a =>
     a.budgetId === currentBudgetId &&
-    ['checking', 'savings'].includes(a.type) &&
+    BUDGET_ACCOUNT_TYPES.includes(a.type) &&
     a.isActive
   );
-  const loansAndCredit = accounts.filter(a =>
+  const creditCards = accounts.filter(a =>
     a.budgetId === currentBudgetId &&
-    ['credit', 'loan'].includes(a.type) &&
+    a.type === 'credit' &&
+    a.isActive
+  );
+  const loans = accounts.filter(a =>
+    a.budgetId === currentBudgetId &&
+    a.type === 'loan' &&
     a.isActive
   );
   const closedAccounts = accounts.filter(a =>
     a.budgetId === currentBudgetId &&
     !a.isActive &&
-    a.type === 'loan'
+    ['credit', 'loan'].includes(a.type)
   );
 
   // Tracking accounts (not budget-specific)
@@ -88,6 +96,13 @@ export function Sidebar() {
       deleteBudget(budgetToDelete);
       setBudgetToDelete(null);
     }
+  };
+
+  const handleEditAccount = (account: Account, e: React.MouseEvent) => {
+    e.preventDefault();  // Prevent navigation
+    e.stopPropagation();  // Prevent event bubbling
+    setEditingAccount(account);
+    setIsEditAccountOpen(true);
   };
 
   const formatCurrency = (amount: number) => {
@@ -185,7 +200,7 @@ export function Sidebar() {
         {/* Budget Accounts */}
         <div>
           <div className="flex items-center justify-between px-3 mb-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">Accounts</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">Cash</h3>
             <CreateAccountDialog 
               defaultType="checking"
               trigger={
@@ -196,33 +211,42 @@ export function Sidebar() {
             />
           </div>
           <div className="space-y-0.5">
-            {budgetAccounts.map(account => (
+            {cashAccounts.map(account => (
               <Link key={account.id} href={`/accounts/${account.id}`}>
                 <div className={cn(
                   "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors group cursor-pointer",
                   location === `/accounts/${account.id}` ? "bg-sidebar-accent text-white" : "hover:bg-sidebar-accent/50 text-sidebar-foreground/80"
                 )}>
-                  <div className="flex items-center gap-2 truncate">
+                  <div className="flex items-center gap-2 truncate flex-1">
                     <Wallet className="w-3 h-3 opacity-70" />
                     <span className="truncate">{account.name}</span>
                   </div>
-                  <span className={cn(
-                    "text-xs font-medium",
-                    account.balance < 0 ? "text-red-400" : "text-emerald-400"
-                  )}>
-                    {formatCurrency(account.balance)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => handleEditAccount(account, e)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-sidebar-accent rounded"
+                      title="Edit account name"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <span className={cn(
+                      "text-xs font-medium",
+                      account.balance < 0 ? "text-red-400" : "text-emerald-400"
+                    )}>
+                      {formatCurrency(account.balance)}
+                    </span>
+                  </div>
                 </div>
               </Link>
             ))}
           </div>
         </div>
 
-        {/* Loans & Credit */}
+        {/* Credit Cards */}
         <div>
           <div className="flex items-center justify-between px-3 mb-2">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">Loans & Credit</h3>
-            <CreateAccountDialog 
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">Credit Cards</h3>
+            <CreateAccountDialog
               defaultType="credit"
               trigger={
                 <button className="text-sidebar-foreground/50 hover:text-white transition-colors">
@@ -232,22 +256,76 @@ export function Sidebar() {
             />
           </div>
           <div className="space-y-0.5">
-            {loansAndCredit.map(account => (
+            {creditCards.map(account => (
               <Link key={account.id} href={`/accounts/${account.id}`}>
                 <div className={cn(
                   "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors group cursor-pointer",
                   location === `/accounts/${account.id}` ? "bg-sidebar-accent text-white" : "hover:bg-sidebar-accent/50 text-sidebar-foreground/80"
                 )}>
-                  <div className="flex items-center gap-2 truncate">
-                    {account.type === 'loan' ? <Landmark className="w-3 h-3 opacity-70" /> : <CreditCard className="w-3 h-3 opacity-70" />}
+                  <div className="flex items-center gap-2 truncate flex-1">
+                    <CreditCard className="w-3 h-3 opacity-70" />
                     <span className="truncate">{account.name}</span>
                   </div>
-                  <span className={cn(
-                    "text-xs font-medium",
-                    account.balance < 0 ? "text-red-400" : "text-emerald-400"
-                  )}>
-                    {formatCurrency(account.balance)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => handleEditAccount(account, e)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-sidebar-accent rounded"
+                      title="Edit account name"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <span className={cn(
+                      "text-xs font-medium",
+                      account.balance < 0 ? "text-red-400" : "text-emerald-400"
+                    )}>
+                      {formatCurrency(account.balance)}
+                    </span>
+                  </div>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+
+        {/* Loans */}
+        <div>
+          <div className="flex items-center justify-between px-3 mb-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-sidebar-foreground/50">Loans</h3>
+            <CreateAccountDialog
+              defaultType="loan"
+              trigger={
+                <button className="text-sidebar-foreground/50 hover:text-white transition-colors">
+                  <PlusCircle className="w-3 h-3" />
+                </button>
+              }
+            />
+          </div>
+          <div className="space-y-0.5">
+            {loans.map(account => (
+              <Link key={account.id} href={`/accounts/${account.id}`}>
+                <div className={cn(
+                  "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors group cursor-pointer",
+                  location === `/accounts/${account.id}` ? "bg-sidebar-accent text-white" : "hover:bg-sidebar-accent/50 text-sidebar-foreground/80"
+                )}>
+                  <div className="flex items-center gap-2 truncate flex-1">
+                    <Landmark className="w-3 h-3 opacity-70" />
+                    <span className="truncate">{account.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={(e) => handleEditAccount(account, e)}
+                      className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-sidebar-accent rounded"
+                      title="Edit account name"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                    <span className={cn(
+                      "text-xs font-medium",
+                      account.balance < 0 ? "text-red-400" : "text-emerald-400"
+                    )}>
+                      {formatCurrency(account.balance)}
+                    </span>
+                  </div>
                 </div>
               </Link>
             ))}
@@ -267,16 +345,25 @@ export function Sidebar() {
                     "flex items-center justify-between px-3 py-2 rounded-md text-sm transition-colors group cursor-pointer opacity-60",
                     location === `/accounts/${account.id}` ? "bg-sidebar-accent text-white" : "hover:bg-sidebar-accent/50 text-sidebar-foreground/80"
                   )}>
-                    <div className="flex items-center gap-2 truncate">
-                      <Landmark className="w-3 h-3 opacity-70" />
+                    <div className="flex items-center gap-2 truncate flex-1">
+                      {account.type === 'loan' ? <Landmark className="w-3 h-3 opacity-70" /> : <CreditCard className="w-3 h-3 opacity-70" />}
                       <span className="truncate">{account.name}</span>
                     </div>
-                    <span className={cn(
-                      "text-xs font-medium",
-                      account.balance < 0 ? "text-red-400" : "text-emerald-400"
-                    )}>
-                      {formatCurrency(account.balance)}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={(e) => handleEditAccount(account, e)}
+                        className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:bg-sidebar-accent rounded"
+                        title="Edit account name"
+                      >
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                      <span className={cn(
+                        "text-xs font-medium",
+                        account.balance < 0 ? "text-red-400" : "text-emerald-400"
+                      )}>
+                        {formatCurrency(account.balance)}
+                      </span>
+                    </div>
                   </div>
                 </Link>
               ))}
@@ -373,6 +460,14 @@ export function Sidebar() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Account Dialog */}
+      <CreateAccountDialog
+        account={editingAccount || undefined}
+        open={isEditAccountOpen}
+        onOpenChange={setIsEditAccountOpen}
+        onSuccess={() => setEditingAccount(null)}
+      />
     </div>
   );
 }

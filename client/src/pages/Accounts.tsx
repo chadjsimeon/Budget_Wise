@@ -42,7 +42,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
+import { LoanPayoffPlanner } from '@/components/LoanPayoffPlanner';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -59,6 +61,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { CreateAccountDialog } from '@/components/modals/CreateAccountDialog';
 
 interface AccountsPageProps {
   triggerNewTransaction?: boolean;
@@ -126,6 +129,8 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
   const [editingTx, setEditingTx] = useState<string | null>(null);
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
+  const [editingAccount, setEditingAccount] = useState<typeof currentAccount | null>(null);
+  const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
   const [newTx, setNewTx] = useState({
     date: new Date(),
     payee: '',
@@ -147,6 +152,12 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
 
   const handleAddTransaction = () => {
     const amount = parseFloat(newTx.amount);
+
+    // Validate amount is entered and greater than 0
+    if (!newTx.amount || isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount greater than 0');
+      return;
+    }
 
     if (newTx.type === 'transfer') {
       // Handle transfer between accounts
@@ -252,6 +263,11 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
 
   const handleDeleteAccount = (accountId: string) => {
     setDeletingAccountId(accountId);
+  };
+
+  const handleEditAccount = (account: typeof currentAccount) => {
+    setEditingAccount(account);
+    setIsEditAccountOpen(true);
   };
 
   const confirmDeleteAccount = () => {
@@ -390,6 +406,13 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start">
+                <DropdownMenuItem
+                  onClick={() => handleEditAccount(currentAccount)}
+                  className="cursor-pointer"
+                >
+                  <Pencil className="w-4 h-4 mr-2" />
+                  Edit Account
+                </DropdownMenuItem>
                 <DropdownMenuItem
                   onClick={() => handleDeleteAccount(currentAccount.id)}
                   className="cursor-pointer text-red-600 focus:text-red-600"
@@ -674,9 +697,16 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
         </div>
       )}
 
-      {/* Transactions Table */}
-      <div className="flex-1 overflow-auto">
-        <Table>
+      {/* Loan Planner or Transactions Table */}
+      {currentAccount && currentAccount.type === 'loan' ? (
+        <LoanPayoffPlanner
+          account={currentAccount}
+          transactions={accountTransactions}
+          formatCurrency={formatCurrency}
+        />
+      ) : (
+        <div className="flex-1 overflow-auto">
+          <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-[50px]">
@@ -740,7 +770,16 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
                     <TableCell className="font-medium text-slate-600">
                       {format(parse(t.date, 'yyyy-MM-dd', new Date()), 'MMM dd, yyyy')}
                     </TableCell>
-                    <TableCell className="font-semibold text-slate-700">{t.payee}</TableCell>
+                    <TableCell className="font-semibold text-slate-700">
+                      <div className="flex items-center gap-2">
+                        {t.payee}
+                        {t.isOpeningBalance && (
+                          <Badge variant="outline" className="text-xs">
+                            Opening Balance
+                          </Badge>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell>
                       <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
                         {category ? category.name : (t.amount > 0 ? "Inflow: Ready to Assign" : "Uncategorized")}
@@ -781,7 +820,8 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
             )}
           </TableBody>
         </Table>
-      </div>
+        </div>
+      )}
 
       {/* Delete Transaction Confirmation Dialog */}
       <AlertDialog open={!!deletingTxId} onOpenChange={(open) => !open && setDeletingTxId(null)}>
@@ -818,6 +858,14 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Edit Account Dialog */}
+      <CreateAccountDialog
+        account={editingAccount || undefined}
+        open={isEditAccountOpen}
+        onOpenChange={setIsEditAccountOpen}
+        onSuccess={() => setEditingAccount(null)}
+      />
     </div>
   );
 }
