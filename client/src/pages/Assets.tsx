@@ -73,11 +73,7 @@ export default function AssetsPage() {
     const value = parseFloat(formData.value) || 0;
 
     if (editingId) {
-      updateAsset(editingId, value);
-      // Note: Store only has updateAsset for value currently for simplicity in requested changes,
-      // but in a real app we'd update name/type too.
-      // The store definition I added: updateAsset: (id: string, value: number) => void;
-      // I should have made it more flexible. For now I'll just update value as that's the most critical.
+      updateAsset(editingId, { value });
     } else {
       addAsset({
         name: formData.name,
@@ -85,7 +81,7 @@ export default function AssetsPage() {
         type: formData.type as any
       });
     }
-    
+
     handleOpenChange(false);
   };
 

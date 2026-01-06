@@ -2,8 +2,13 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { format } from 'date-fns';
 
-export type AccountType = 'checking' | 'savings' | 'credit' | 'loan';
+export type AccountType = 'checking' | 'savings' | 'cash' | 'credit' | 'loan';
 export type TrackingAccountType = 'asset' | 'liability';
+
+// Account types that contribute to "Ready to Assign" calculation
+// Only liquid asset accounts (checking, savings, cash) are included
+// Credit cards and loans are excluded as they represent liabilities
+export const BUDGET_ACCOUNT_TYPES: readonly AccountType[] = ['checking', 'savings', 'cash'] as const;
 
 export interface Budget {
   id: string;
@@ -22,6 +27,12 @@ export interface Account {
   type: AccountType;
   balance: number;
   isActive: boolean;
+  // Loan-specific fields
+  interestRate?: number;      // Annual percentage rate (e.g., 12.0 for 12%)
+  monthlyPayment?: number;    // Required monthly payment amount
+  originalBalance?: number;   // Original loan amount (for progress calculation)
+  loanStartDate?: string;     // When the loan started (for calculating original schedule)
+  linkedCategoryId?: string;  // Links to auto-created category for loan payments
 }
 
 export interface TrackingAccount {
@@ -51,6 +62,7 @@ export interface Category {
   groupId: string;
   name: string;
   goal?: number; // Monthly target amount
+  linkedAccountId?: string; // Links back to loan account if auto-created
 }
 
 export interface Transaction {
@@ -63,6 +75,7 @@ export interface Transaction {
   amount: number;
   memo?: string;
   cleared: boolean;
+  isOpeningBalance?: boolean;
 }
 
 export interface BudgetTemplate {
@@ -106,7 +119,7 @@ interface AppState {
   setMonth: (month: string) => void;
 
   // Account Actions (Budget-specific)
-  addAccount: (account: Omit<Account, 'id' | 'budgetId'>) => void;
+  addAccount: (account: Omit<Account, 'id' | 'budgetId'>) => Account;
   updateAccount: (id: string, updates: Partial<Account>) => void;
   deleteAccount: (id: string) => void;
 
@@ -182,7 +195,32 @@ const INITIAL_TRANSACTIONS: Transaction[] = [];
 
 const INITIAL_ASSIGNMENTS: MonthlyAssignments = {};
 
-const STORAGE_VERSION = 3; // Increment this to reset all data
+// Default category structure for new budgets
+const DEFAULT_CATEGORY_STRUCTURE = [
+  {
+    groupName: 'Bills',
+    categories: ['Rent/Mortgage', 'Phone', 'Internet', 'Utilities']
+  },
+  {
+    groupName: 'Needs',
+    categories: ['Groceries', 'Transportation', 'Medical expenses', 'Emergency fund']
+  },
+  {
+    groupName: 'Wants',
+    categories: [
+      'Dining out',
+      'Entertainment',
+      'Vacation',
+      'Stuff I forgot to plan for',
+      'Budget Wise subscription'
+    ]
+  }
+];
+
+// Constant for auto-created loan category group
+const DEBT_REPAYMENTS_GROUP_NAME = 'Debt Repayments';
+
+const STORAGE_VERSION = 6; // Increment this to reset all data
 
 export const useStore = create<AppState>()(
   persist(
@@ -201,14 +239,40 @@ export const useStore = create<AppState>()(
 
       // ============= BUDGETS =============
       addBudget: (budget) => set((state) => {
+        // Create the budget
         const newBudget: Budget = {
           ...budget,
           id: Math.random().toString(36).substr(2, 9),
           createdAt: new Date()
         };
+
+        // Generate default category groups
+        const newGroups: CategoryGroup[] = DEFAULT_CATEGORY_STRUCTURE.map(template => ({
+          id: Math.random().toString(36).substr(2, 9),
+          budgetId: newBudget.id,
+          name: template.groupName
+        }));
+
+        // Generate default categories linked to their groups
+        const newCategories: Category[] = [];
+        DEFAULT_CATEGORY_STRUCTURE.forEach((template, idx) => {
+          const groupId = newGroups[idx].id;
+          template.categories.forEach(categoryName => {
+            newCategories.push({
+              id: Math.random().toString(36).substr(2, 9),
+              budgetId: newBudget.id,
+              groupId: groupId,
+              name: categoryName
+            });
+          });
+        });
+
+        // Return updated state with budget + defaults
         return {
           budgets: [...state.budgets, newBudget],
-          currentBudgetId: newBudget.id
+          currentBudgetId: newBudget.id,
+          categoryGroups: [...state.categoryGroups, ...newGroups],
+          categories: [...state.categories, ...newCategories]
         };
       }),
 
@@ -246,23 +310,145 @@ export const useStore = create<AppState>()(
       setMonth: (month) => set({ currentMonth: month }),
 
       // ============= ACCOUNTS =============
-      addAccount: (account) => set((state) => ({
-        accounts: [...state.accounts, {
+      addAccount: (account) => {
+        const currentBudgetId = get().currentBudgetId;
+        const newAccount = {
           ...account,
           id: Math.random().toString(36).substr(2, 9),
-          budgetId: state.currentBudgetId,
+          budgetId: currentBudgetId,
           isActive: true
-        }]
-      })),
+        };
 
-      updateAccount: (id, updates) => set((state) => ({
-        accounts: state.accounts.map(a => a.id === id ? { ...a, ...updates } : a)
-      })),
+        // If this is a loan account with monthly payment, auto-create category
+        if (account.type === 'loan' && account.monthlyPayment && account.monthlyPayment > 0) {
+          set((state) => {
+            // Find or create Debt Repayments group
+            let debtGroupId = state.categoryGroups.find(
+              g => g.budgetId === currentBudgetId &&
+                   g.name.toLowerCase() === DEBT_REPAYMENTS_GROUP_NAME.toLowerCase()
+            )?.id;
 
-      deleteAccount: (id) => set((state) => ({
-        accounts: state.accounts.filter(a => a.id !== id),
-        transactions: state.transactions.filter(t => t.accountId !== id)
-      })),
+            let updatedGroups = state.categoryGroups;
+
+            if (!debtGroupId) {
+              // Create the group
+              debtGroupId = Math.random().toString(36).substr(2, 9);
+              const newGroup: CategoryGroup = {
+                id: debtGroupId,
+                budgetId: currentBudgetId,
+                name: DEBT_REPAYMENTS_GROUP_NAME
+              };
+              updatedGroups = [...state.categoryGroups, newGroup];
+            }
+
+            // Create the linked category
+            const categoryId = Math.random().toString(36).substr(2, 9);
+            const newCategory: Category = {
+              id: categoryId,
+              budgetId: currentBudgetId,
+              groupId: debtGroupId,
+              name: `${account.name} Payment`,
+              goal: account.monthlyPayment,
+              linkedAccountId: newAccount.id
+            };
+
+            // Link account to category
+            newAccount.linkedCategoryId = categoryId;
+
+            return {
+              accounts: [...state.accounts, newAccount],
+              categoryGroups: updatedGroups,
+              categories: [...state.categories, newCategory]
+            };
+          });
+        } else {
+          // Non-loan account or loan without payment - simple creation
+          set((state) => ({
+            accounts: [...state.accounts, newAccount]
+          }));
+        }
+
+        return newAccount;
+      },
+
+      updateAccount: (id, updates) => set((state) => {
+        const account = state.accounts.find(a => a.id === id);
+        if (!account) return state;
+
+        const updatedAccount = { ...account, ...updates };
+        const updatedAccounts = state.accounts.map(a => a.id === id ? updatedAccount : a);
+
+        // Case 1: Loan's monthly payment changed - sync to linked category
+        if (
+          account.type === 'loan' &&
+          account.linkedCategoryId &&
+          updates.monthlyPayment !== undefined
+        ) {
+          const updatedCategories = state.categories.map(c =>
+            c.id === account.linkedCategoryId
+              ? { ...c, goal: updates.monthlyPayment }
+              : c
+          );
+          return { accounts: updatedAccounts, categories: updatedCategories };
+        }
+
+        // Case 2: Account type changed from loan to non-loan - cleanup link
+        if (
+          account.type === 'loan' &&
+          updates.type &&
+          updates.type !== 'loan' &&
+          account.linkedCategoryId
+        ) {
+          // Remove the link but don't delete the category (user may want it)
+          const updatedCategories = state.categories.map(c =>
+            c.id === account.linkedCategoryId
+              ? { ...c, linkedAccountId: undefined }
+              : c
+          );
+          updatedAccount.linkedCategoryId = undefined;
+          return {
+            accounts: state.accounts.map(a => a.id === id ? updatedAccount : a),
+            categories: updatedCategories
+          };
+        }
+
+        return { accounts: updatedAccounts };
+      }),
+
+      deleteAccount: (id) => set((state) => {
+        const account = state.accounts.find(a => a.id === id);
+        if (!account) return state;
+
+        // Base deletions
+        const updates = {
+          accounts: state.accounts.filter(a => a.id !== id),
+          transactions: state.transactions.filter(t => t.accountId !== id)
+        };
+
+        // If loan has linked category, delete it too
+        if (account.linkedCategoryId) {
+          return {
+            ...updates,
+            categories: state.categories.filter(c => c.id !== account.linkedCategoryId),
+            // Also clean up monthly assignments for that category
+            monthlyAssignments: Object.fromEntries(
+              Object.entries(state.monthlyAssignments).map(([budgetId, budgetAssignments]) => [
+                budgetId,
+                Object.fromEntries(
+                  Object.entries(budgetAssignments).map(([monthKey, monthAssignments]) => [
+                    monthKey,
+                    Object.fromEntries(
+                      Object.entries(monthAssignments).filter(([catId]) => catId !== account.linkedCategoryId)
+                    )
+                  ])
+                )
+              ])
+            )
+          };
+        }
+
+        return updates;
+      }),
 
       // ============= TRACKING ACCOUNTS =============
       addTrackingAccount: (account) => set((state) => ({
@@ -304,13 +490,6 @@ export const useStore = create<AppState>()(
         const updatedAccounts = state.accounts.map(acc => {
           if (acc.id === transaction.accountId) {
             const newBalance = acc.balance + transaction.amount;
-            
-            // 🎉 AUTO-CLOSE LOANS FEATURE
-            if (acc.type === 'loan' && newBalance >= 0) {
-              console.log(`🎉 Loan "${acc.name}" paid off! Auto-closing.`);
-              return { ...acc, balance: newBalance, isActive: false };
-            }
-            
             return { ...acc, balance: newBalance };
           }
           return acc;
@@ -337,12 +516,6 @@ export const useStore = create<AppState>()(
         updatedAccounts = updatedAccounts.map(acc => {
           if (acc.id === newTx.accountId) {
             const newBalance = acc.balance + newTx.amount;
-            
-            if (acc.type === 'loan' && newBalance >= 0 && acc.isActive) {
-              console.log(`🎉 Loan "${acc.name}" paid off!`);
-              return { ...acc, balance: newBalance, isActive: false };
-            }
-            
             return { ...acc, balance: newBalance };
           }
           return acc;
@@ -357,24 +530,56 @@ export const useStore = create<AppState>()(
       deleteTransaction: (id) => set((state) => {
         const tx = state.transactions.find(t => t.id === id);
         if (!tx) return state;
-        
-        const updatedAccounts = state.accounts.map(acc => {
+
+        // Check if this is a transfer transaction
+        const isTransfer = tx.payee.startsWith('Transfer to') || tx.payee.startsWith('Transfer from');
+        let pairedTransferId: string | null = null;
+
+        if (isTransfer) {
+          // Find the paired transfer transaction
+          // It should have the same date and memo, but opposite direction
+          pairedTransferId = state.transactions.find(t =>
+            t.id !== id &&
+            t.date === tx.date &&
+            t.memo === tx.memo &&
+            t.accountId !== tx.accountId &&
+            Math.abs(t.amount) === Math.abs(tx.amount) &&
+            (
+              (tx.payee.startsWith('Transfer to') && t.payee.startsWith('Transfer from')) ||
+              (tx.payee.startsWith('Transfer from') && t.payee.startsWith('Transfer to'))
+            )
+          )?.id || null;
+        }
+
+        const pairedTx = pairedTransferId ? state.transactions.find(t => t.id === pairedTransferId) : null;
+
+        // Update accounts - reverse the balance changes from both transactions
+        let updatedAccounts = state.accounts.map(acc => {
+          let newBalance = acc.balance;
+
+          // Reverse the primary transaction
           if (acc.id === tx.accountId) {
-            const newBalance = acc.balance - tx.amount;
-            
-            // Reactivate loan if it goes back into debt
-            if (acc.type === 'loan' && !acc.isActive && newBalance < 0) {
-              console.log(`🔄 Reactivating "${acc.name}"`);
-              return { ...acc, balance: newBalance, isActive: true };
-            }
-            
+            newBalance = acc.balance - tx.amount;
+          }
+
+          // Reverse the paired transaction if it exists
+          if (pairedTx && acc.id === pairedTx.accountId) {
+            newBalance = acc.balance - pairedTx.amount;
+          }
+
+          // Update balance for affected accounts
+          if (acc.id === tx.accountId || (pairedTx && acc.id === pairedTx.accountId)) {
             return { ...acc, balance: newBalance };
           }
+
           return acc;
         });
-        
+
+        // Remove both transactions if it's a transfer, otherwise just the one
+        const transactionsToRemove = pairedTransferId ? [id, pairedTransferId] : [id];
+
         return {
-          transactions: state.transactions.filter(t => t.id !== id),
+          transactions: state.transactions.filter(t => !transactionsToRemove.includes(t.id)),
           accounts: updatedAccounts
         };
       }),
@@ -398,15 +603,39 @@ export const useStore = create<AppState>()(
         )
       })),
 
-      deleteCategory: (id) => set((state) => ({
-        categories: state.categories.filter(c => c.id !== id),
-        monthlyAssignments: Object.fromEntries(
-          Object.entries(state.monthlyAssignments).map(([month, assignments]) => [
-            month,
-            Object.fromEntries(Object.entries(assignments).filter(([catId]) => catId !== id))
-          ])
-        )
-      })),
+      deleteCategory: (id) => set((state) => {
+        const category = state.categories.find(c => c.id === id);
+
+        // Base deletion logic
+        const updates = {
+          categories: state.categories.filter(c => c.id !== id),
+          monthlyAssignments: Object.fromEntries(
+            Object.entries(state.monthlyAssignments).map(([budgetId, budgetAssignments]) => [
+              budgetId,
+              Object.fromEntries(
+                Object.entries(budgetAssignments).map(([monthKey, monthAssignments]) => [
+                  monthKey,
+                  Object.fromEntries(Object.entries(monthAssignments).filter(([catId]) => catId !== id))
+                ])
+              )
+            ])
+          )
+        };
+
+        // If this category was linked to a loan account, clear the link
+        if (category?.linkedAccountId) {
+          return {
+            ...updates,
+            accounts: state.accounts.map(a =>
+              a.id === category.linkedAccountId
+                ? { ...a, linkedCategoryId: undefined }
+                : a
+            )
+          };
+        }
+
+        return updates;
+      }),
 
       addCategoryGroup: (group) => set((state) => ({
         categoryGroups: [...state.categoryGroups, {
@@ -578,9 +807,14 @@ export const useStore = create<AppState>()(
       getReadyToAssign: (month) => {
         const state = get();
 
-        // Only count ACTIVE accounts in current budget
+        // Only count budget accounts (checking, savings, cash) that are active
+        // Excludes credit cards and loans as they are liabilities, not available funds
         const totalAccountBalance = state.accounts
-          .filter(a => a.isActive && a.budgetId === state.currentBudgetId)
+          .filter(a =>
+            a.isActive &&
+            a.budgetId === state.currentBudgetId &&
+            BUDGET_ACCOUNT_TYPES.includes(a.type)
+          )
           .reduce((sum, a) => sum + a.balance, 0);
 
         const budgetAssignments = state.monthlyAssignments[state.currentBudgetId] || {};
