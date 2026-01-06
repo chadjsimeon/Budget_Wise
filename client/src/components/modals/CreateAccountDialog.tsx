@@ -214,6 +214,15 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
         {/* Show loan fields for new loans OR when editing existing loans */}
         {((isEditMode && account?.type === 'loan') || (!isEditMode && formData.type === 'loan')) && (
               <>
+                {/* Show informational notice for new loans only */}
+                {!isEditMode && (
+                  <div className="col-span-4 bg-blue-50 border border-blue-200 rounded-md p-3">
+                    <p className="text-sm text-blue-800">
+                      A budget category will be automatically created in the "Debt Repayments" group to track this loan's payments.
+                    </p>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="interestRate" className="text-right">
                     Interest Rate

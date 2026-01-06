@@ -32,6 +32,7 @@ export interface Account {
   monthlyPayment?: number;    // Required monthly payment amount
   originalBalance?: number;   // Original loan amount (for progress calculation)
   loanStartDate?: string;     // When the loan started (for calculating original schedule)
+  linkedCategoryId?: string;  // Links to auto-created category for loan payments
 }
 
 export interface TrackingAccount {
@@ -61,6 +62,7 @@ export interface Category {
   groupId: string;
   name: string;
   goal?: number; // Monthly target amount
+  linkedAccountId?: string; // Links back to loan account if auto-created
 }
 
 export interface Transaction {
@@ -215,7 +217,10 @@ const DEFAULT_CATEGORY_STRUCTURE = [
   }
 ];
 
-const STORAGE_VERSION = 5; // Increment this to reset all data
+// Constant for auto-created loan category group
+const DEBT_REPAYMENTS_GROUP_NAME = 'Debt Repayments';
+
+const STORAGE_VERSION = 6; // Increment this to reset all data
 
 export const useStore = create<AppState>()(
   persist(
@@ -306,28 +311,144 @@ export const useStore = create<AppState>()(
 
       // ============= ACCOUNTS =============
       addAccount: (account) => {
+        const currentBudgetId = get().currentBudgetId;
         const newAccount = {
           ...account,
           id: Math.random().toString(36).substr(2, 9),
-          budgetId: get().currentBudgetId,
+          budgetId: currentBudgetId,
           isActive: true
         };
 
-        set((state) => ({
-          accounts: [...state.accounts, newAccount]
-        }));
+        // If this is a loan account with monthly payment, auto-create category
+        if (account.type === 'loan' && account.monthlyPayment && account.monthlyPayment > 0) {
+          set((state) => {
+            // Find or create Debt Repayments group
+            let debtGroupId = state.categoryGroups.find(
+              g => g.budgetId === currentBudgetId &&
+                   g.name.toLowerCase() === DEBT_REPAYMENTS_GROUP_NAME.toLowerCase()
+            )?.id;
+
+            let updatedGroups = state.categoryGroups;
+
+            if (!debtGroupId) {
+              // Create the group
+              debtGroupId = Math.random().toString(36).substr(2, 9);
+              const newGroup: CategoryGroup = {
+                id: debtGroupId,
+                budgetId: currentBudgetId,
+                name: DEBT_REPAYMENTS_GROUP_NAME
+              };
+              updatedGroups = [...state.categoryGroups, newGroup];
+            }
+
+            // Create the linked category
+            const categoryId = Math.random().toString(36).substr(2, 9);
+            const newCategory: Category = {
+              id: categoryId,
+              budgetId: currentBudgetId,
+              groupId: debtGroupId,
+              name: `${account.name} Payment`,
+              goal: account.monthlyPayment,
+              linkedAccountId: newAccount.id
+            };
+
+            // Link account to category
+            newAccount.linkedCategoryId = categoryId;
+
+            return {
+              accounts: [...state.accounts, newAccount],
+              categoryGroups: updatedGroups,
+              categories: [...state.categories, newCategory]
+            };
+          });
+        } else {
+          // Non-loan account or loan without payment - simple creation
+          set((state) => ({
+            accounts: [...state.accounts, newAccount]
+          }));
+        }
 
         return newAccount;
       },
 
-      updateAccount: (id, updates) => set((state) => ({
-        accounts: state.accounts.map(a => a.id === id ? { ...a, ...updates } : a)
-      })),
+      updateAccount: (id, updates) => set((state) => {
+        const account = state.accounts.find(a => a.id === id);
+        if (!account) return state;
 
-      deleteAccount: (id) => set((state) => ({
-        accounts: state.accounts.filter(a => a.id !== id),
-        transactions: state.transactions.filter(t => t.accountId !== id)
-      })),
+        const updatedAccount = { ...account, ...updates };
+        const updatedAccounts = state.accounts.map(a => a.id === id ? updatedAccount : a);
+
+        // Case 1: Loan's monthly payment changed - sync to linked category
+        if (
+          account.type === 'loan' &&
+          account.linkedCategoryId &&
+          updates.monthlyPayment !== undefined
+        ) {
+          const updatedCategories = state.categories.map(c =>
+            c.id === account.linkedCategoryId
+              ? { ...c, goal: updates.monthlyPayment }
+              : c
+          );
+          return { accounts: updatedAccounts, categories: updatedCategories };
+        }
+
+        // Case 2: Account type changed from loan to non-loan - cleanup link
+        if (
+          account.type === 'loan' &&
+          updates.type &&
+          updates.type !== 'loan' &&
+          account.linkedCategoryId
+        ) {
+          // Remove the link but don't delete the category (user may want it)
+          const updatedCategories = state.categories.map(c =>
+            c.id === account.linkedCategoryId
+              ? { ...c, linkedAccountId: undefined }
+              : c
+          );
+          updatedAccount.linkedCategoryId = undefined;
+          return {
+            accounts: state.accounts.map(a => a.id === id ? updatedAccount : a),
+            categories: updatedCategories
+          };
+        }
+
+        return { accounts: updatedAccounts };
+      }),
+
+      deleteAccount: (id) => set((state) => {
+        const account = state.accounts.find(a => a.id === id);
+        if (!account) return state;
+
+        // Base deletions
+        const updates = {
+          accounts: state.accounts.filter(a => a.id !== id),
+          transactions: state.transactions.filter(t => t.accountId !== id)
+        };
+
+        // If loan has linked category, delete it too
+        if (account.linkedCategoryId) {
+          return {
+            ...updates,
+            categories: state.categories.filter(c => c.id !== account.linkedCategoryId),
+            // Also clean up monthly assignments for that category
+            monthlyAssignments: Object.fromEntries(
+              Object.entries(state.monthlyAssignments).map(([budgetId, budgetAssignments]) => [
+                budgetId,
+                Object.fromEntries(
+                  Object.entries(budgetAssignments).map(([monthKey, monthAssignments]) => [
+                    monthKey,
+                    Object.fromEntries(
+                      Object.entries(monthAssignments).filter(([catId]) => catId !== account.linkedCategoryId)
+                    )
+                  ])
+                )
+              ])
+            )
+          };
+        }
+
+        return updates;
+      }),
 
       // ============= TRACKING ACCOUNTS =============
       addTrackingAccount: (account) => set((state) => ({
@@ -482,15 +603,39 @@ export const useStore = create<AppState>()(
         )
       })),
 
-      deleteCategory: (id) => set((state) => ({
-        categories: state.categories.filter(c => c.id !== id),
-        monthlyAssignments: Object.fromEntries(
-          Object.entries(state.monthlyAssignments).map(([month, assignments]) => [
-            month,
-            Object.fromEntries(Object.entries(assignments).filter(([catId]) => catId !== id))
-          ])
-        )
-      })),
+      deleteCategory: (id) => set((state) => {
+        const category = state.categories.find(c => c.id === id);
+
+        // Base deletion logic
+        const updates = {
+          categories: state.categories.filter(c => c.id !== id),
+          monthlyAssignments: Object.fromEntries(
+            Object.entries(state.monthlyAssignments).map(([budgetId, budgetAssignments]) => [
+              budgetId,
+              Object.fromEntries(
+                Object.entries(budgetAssignments).map(([monthKey, monthAssignments]) => [
+                  monthKey,
+                  Object.fromEntries(Object.entries(monthAssignments).filter(([catId]) => catId !== id))
+                ])
+              )
+            ])
+          )
+        };
+
+        // If this category was linked to a loan account, clear the link
+        if (category?.linkedAccountId) {
+          return {
+            ...updates,
+            accounts: state.accounts.map(a =>
+              a.id === category.linkedAccountId
+                ? { ...a, linkedCategoryId: undefined }
+                : a
+            )
+          };
+        }
+
+        return updates;
+      }),
 
       addCategoryGroup: (group) => set((state) => ({
         categoryGroups: [...state.categoryGroups, {
