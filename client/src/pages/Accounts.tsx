@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useRoute } from 'wouter';
 import { useStore } from '@/lib/store';
+import { useCurrencyFormatter } from '@/lib/currency';
 import { format, parse } from 'date-fns';
 import {
   ArrowUpRight,
@@ -273,9 +274,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-TT', { style: 'currency', currency: 'TTD' }).format(amount);
-  };
+  const formatCurrency = useCurrencyFormatter();
 
   // Bulk Selection Handlers
   const handleSelectAll = (checked: boolean) => {

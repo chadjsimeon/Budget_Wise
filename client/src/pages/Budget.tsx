@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useStore } from '@/lib/store';
+import { useCurrencyFormatter } from '@/lib/currency';
 import { format, addMonths, subMonths, parse } from 'date-fns';
 import {
   ChevronLeft,
@@ -124,10 +125,7 @@ export default function BudgetPage() {
   };
 
   const readyToAssign = getReadyToAssign(currentMonth);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-TT', { style: 'currency', currency: 'TTD' }).format(amount);
-  };
+  const formatCurrency = useCurrencyFormatter();
 
   // Auto-assign function: fund categories to their goal amounts
   const handleEditGroup = (group: typeof categoryGroups[0]) => {

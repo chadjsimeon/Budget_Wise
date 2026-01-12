@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '@/lib/store';
+import { useCurrencyFormatter } from '@/lib/currency';
 import { 
   Briefcase, 
   Car, 
@@ -36,10 +37,7 @@ export default function AssetsPage() {
   });
 
   const totalAssets = assets.reduce((sum, a) => sum + a.value, 0);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-TT', { style: 'currency', currency: 'TTD' }).format(amount);
-  };
+  const formatCurrency = useCurrencyFormatter();
 
   const getIcon = (type: string) => {
     switch(type) {
