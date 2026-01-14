@@ -99,24 +99,23 @@ export function CreateCategoryGroupDialog({
         <DialogTitle>{isEditMode ? 'Edit Category Group' : 'Add Category Group'}</DialogTitle>
       </DialogHeader>
       <form onSubmit={handleSubmit}>
-        <div className="grid gap-4 py-4">
+        <div className="grid gap-5 py-4">
           {/* Group Name */}
-          <div className="grid grid-cols-4 items-center gap-4">
-            <Label htmlFor="groupName" className="text-right">
+          <div className="space-y-2">
+            <Label htmlFor="groupName">
               Group Name
             </Label>
             <Input
               id="groupName"
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
-              className="col-span-3"
               placeholder="e.g. Monthly Bills"
               required
             />
           </div>
 
           {/* Preset Groups */}
-          <div className="col-span-4 border-t pt-4">
+          <div className="border-t pt-4">
             <Label className="text-sm font-medium mb-3 block">Common Category Groups</Label>
             <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-2 bg-slate-50 rounded-md">
               {GROUP_PRESETS.map((preset, idx) => (

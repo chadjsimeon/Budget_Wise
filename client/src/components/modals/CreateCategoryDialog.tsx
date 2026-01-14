@@ -93,17 +93,17 @@ export function CreateCategoryDialog({ trigger, groupId, onSuccess }: CreateCate
           <DialogTitle>Add Budget Category</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="grid gap-4 py-4">
+          <div className="grid gap-5 py-4">
             {/* Category Group Selection */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="group" className="text-right">
+            <div className="space-y-2">
+              <Label htmlFor="group">
                 Category Group
               </Label>
               <Select
                 value={formData.groupId}
                 onValueChange={(val) => setFormData({ ...formData, groupId: val })}
               >
-                <SelectTrigger className="col-span-3">
+                <SelectTrigger>
                   <SelectValue placeholder="Select group" />
                 </SelectTrigger>
                 <SelectContent>
@@ -117,22 +117,21 @@ export function CreateCategoryDialog({ trigger, groupId, onSuccess }: CreateCate
             </div>
 
             {/* Category Name */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">
+            <div className="space-y-2">
+              <Label htmlFor="name">
                 Category Name
               </Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="col-span-3"
                 placeholder="e.g. Groceries"
                 required
               />
             </div>
 
             {/* Preset Categories */}
-            <div className="col-span-4 border-t pt-4">
+            <div className="border-t pt-4">
               <Label className="text-sm font-medium mb-3 block">Common Budget Categories</Label>
               <div className="flex flex-wrap gap-2 max-h-48 overflow-y-auto p-2 bg-slate-50 rounded-md">
                 {CATEGORY_PRESETS.map((preset, idx) => (

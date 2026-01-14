@@ -142,7 +142,7 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
   };
 
   const dialogContent = (
-    <DialogContent className="sm:max-w-[425px]">
+    <DialogContent className="sm:max-w-[550px]">
       <DialogHeader>
         <DialogTitle>{isEditMode ? 'Edit Account' : 'Add New Account'}</DialogTitle>
         <DialogDescription>
@@ -155,22 +155,21 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
             : 'Track a new bank account, credit card, or loan.'}
         </DialogDescription>
       </DialogHeader>
-      <form onSubmit={handleSubmit} className="grid gap-4 py-4">
-        <div className="grid grid-cols-4 items-center gap-4">
-          <Label htmlFor="name" className="text-right">
+      <form onSubmit={handleSubmit} className="grid gap-5 py-4">
+        <div className="space-y-2">
+          <Label htmlFor="name">
             Nickname
           </Label>
           <Input
             id="name"
             value={formData.name}
             onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            className="col-span-3"
             placeholder="e.g. Chase Sapphire"
             required
           />
         </div>
-        <div className="grid grid-cols-4 items-center gap-4">
-          <Label htmlFor="type" className="text-right">
+        <div className="space-y-2">
+          <Label htmlFor="type">
             Type
           </Label>
           <Select
@@ -178,7 +177,7 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
             onValueChange={(val) => setFormData({ ...formData, type: val as AccountType })}
             disabled={isEditMode}
           >
-            <SelectTrigger className="col-span-3">
+            <SelectTrigger>
               <SelectValue placeholder="Select type" />
             </SelectTrigger>
             <SelectContent>
@@ -192,23 +191,20 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
         </div>
         {/* Show balance field for new accounts OR when editing loans/credit */}
         {(!isEditMode || (isEditMode && (account?.type === 'loan' || account?.type === 'credit'))) && (
-          <>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="balance" className="text-right">
-                {(formData.type === 'loan' || formData.type === 'credit') ? 'Amount Owed' : 'Balance'}
-              </Label>
-              <Input
-                id="balance"
-                type="number"
-                step="0.01"
-                value={formData.balance}
-                onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
-                className="col-span-3"
-                placeholder="0.00"
-                required
-              />
-            </div>
-          </>
+          <div className="space-y-2">
+            <Label htmlFor="balance">
+              {(formData.type === 'loan' || formData.type === 'credit') ? 'Amount Owed' : 'Balance'}
+            </Label>
+            <Input
+              id="balance"
+              type="number"
+              step="0.01"
+              value={formData.balance}
+              onChange={(e) => setFormData({ ...formData, balance: e.target.value })}
+              placeholder="0.00"
+              required
+            />
+          </div>
         )}
 
         {/* Show loan fields for new loans OR when editing existing loans */}
@@ -216,18 +212,18 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
               <>
                 {/* Show informational notice for new loans only */}
                 {!isEditMode && (
-                  <div className="col-span-4 bg-blue-50 border border-blue-200 rounded-md p-3">
+                  <div className="bg-blue-50 border border-blue-200 rounded-md p-3">
                     <p className="text-sm text-blue-800">
                       A budget category will be automatically created in the "Debt Repayments" group to track this loan's payments.
                     </p>
                   </div>
                 )}
 
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="interestRate" className="text-right">
-                    Interest Rate
+                <div className="space-y-2">
+                  <Label htmlFor="interestRate">
+                    Interest Rate (% APR)
                   </Label>
-                  <div className="col-span-3 flex items-center gap-2">
+                  <div className="flex items-center gap-2">
                     <Input
                       id="interestRate"
                       type="number"
@@ -237,14 +233,15 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
                       placeholder="12.00"
                       value={formData.interestRate || ''}
                       onChange={(e) => setFormData({...formData, interestRate: e.target.value})}
+                      className="flex-1"
                       required
                     />
-                    <span className="text-sm text-slate-500">% APR</span>
+                    <span className="text-sm text-slate-500 min-w-fit">%</span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="monthlyPayment" className="text-right">
+                <div className="space-y-2">
+                  <Label htmlFor="monthlyPayment">
                     Monthly Payment
                   </Label>
                   <Input
@@ -255,7 +252,6 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
                     placeholder="1867.89"
                     value={formData.monthlyPayment || ''}
                     onChange={(e) => setFormData({...formData, monthlyPayment: e.target.value})}
-                    className="col-span-3"
                     required
                   />
                 </div>
