@@ -79,7 +79,7 @@ export default function AssetsPage() {
         type: formData.type as any
       });
     }
-    
+
     handleOpenChange(false);
   };
 

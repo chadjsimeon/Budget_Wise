@@ -17,7 +17,8 @@ export default function ReportsPage() {
     getNetWorth,
     transactions: allTransactions,
     categories: allCategories,
-    categoryGroups: allCategoryGroups
+    categoryGroups: allCategoryGroups,
+    monthlyAssignments
   } = useStore();
 
   // Filter by current budget
