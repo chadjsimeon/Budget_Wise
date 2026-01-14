@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'wouter';
 import { useStore, Account, BUDGET_ACCOUNT_TYPES } from '@/lib/store';
+import { useCurrencyFormatter } from '@/lib/currency';
 import { cn } from '@/lib/utils';
 import {
   Wallet,
@@ -105,9 +106,7 @@ export function Sidebar() {
     setIsEditAccountOpen(true);
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-TT', { style: 'currency', currency: 'TTD' }).format(amount);
-  };
+  const formatCurrency = useCurrencyFormatter();
 
   const NavItem = ({ href, icon: Icon, label }: { href: string, icon: any, label: string }) => {
     const isActive = location === href;

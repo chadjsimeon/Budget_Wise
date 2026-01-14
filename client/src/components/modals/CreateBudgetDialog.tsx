@@ -107,7 +107,7 @@ export function CreateBudgetDialog({ trigger, open: controlledOpen, onOpenChange
           {trigger}
         </DialogTrigger>
       )}
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-[550px]">
         <DialogHeader>
           <DialogTitle className="text-2xl">New Plan</DialogTitle>
           {/* Optional: Add migration link */}
@@ -116,32 +116,31 @@ export function CreateBudgetDialog({ trigger, open: controlledOpen, onOpenChange
           </button> */}
         </DialogHeader>
         <form onSubmit={handleSubmit}>
-          <div className="grid gap-6 py-4">
+          <div className="grid gap-5 py-4">
             {/* Plan Name */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right font-medium">
+            <div className="space-y-2">
+              <Label htmlFor="name" className="font-medium">
                 Plan Name
               </Label>
               <Input
                 id="name"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className="col-span-3"
                 placeholder="My Budget"
                 required
               />
             </div>
 
             {/* Currency */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="currency" className="text-right font-medium">
+            <div className="space-y-2">
+              <Label htmlFor="currency" className="font-medium">
                 Currency
               </Label>
               <Select
                 value={formData.currency}
                 onValueChange={(val) => setFormData({ ...formData, currency: val })}
               >
-                <SelectTrigger className="col-span-3">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -155,15 +154,15 @@ export function CreateBudgetDialog({ trigger, open: controlledOpen, onOpenChange
             </div>
 
             {/* Currency Placement */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="currencyPlacement" className="text-right font-medium">
+            <div className="space-y-2">
+              <Label htmlFor="currencyPlacement" className="font-medium">
                 Currency Placement
               </Label>
               <Select
                 value={formData.currencyPlacement}
                 onValueChange={(val) => setFormData({ ...formData, currencyPlacement: val as 'before' | 'after' })}
               >
-                <SelectTrigger className="col-span-3">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -177,15 +176,15 @@ export function CreateBudgetDialog({ trigger, open: controlledOpen, onOpenChange
             </div>
 
             {/* Number Format */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="numberFormat" className="text-right font-medium">
+            <div className="space-y-2">
+              <Label htmlFor="numberFormat" className="font-medium">
                 Number Format
               </Label>
               <Select
                 value={formData.numberFormat}
                 onValueChange={(val: any) => setFormData({ ...formData, numberFormat: val })}
               >
-                <SelectTrigger className="col-span-3">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -199,15 +198,15 @@ export function CreateBudgetDialog({ trigger, open: controlledOpen, onOpenChange
             </div>
 
             {/* Date Format */}
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="dateFormat" className="text-right font-medium">
+            <div className="space-y-2">
+              <Label htmlFor="dateFormat" className="font-medium">
                 Date Format
               </Label>
               <Select
                 value={formData.dateFormat}
                 onValueChange={(val: any) => setFormData({ ...formData, dateFormat: val })}
               >
-                <SelectTrigger className="col-span-3">
+                <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
