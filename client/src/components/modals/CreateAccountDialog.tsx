@@ -77,7 +77,8 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
       const newAccount = {
         name: formData.name,
         type: formData.type as AccountType,
-        balance: parseFloat(formData.balance) || 0
+        balance: parseFloat(formData.balance) || 0,
+        isActive: true
       };
       addAccount(newAccount);
     }
