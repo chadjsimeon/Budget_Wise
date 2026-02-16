@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { relations } from "drizzle-orm";
 import {
   pgTable,
+  pgEnum,
   text,
   varchar,
   timestamp,
@@ -15,11 +16,47 @@ import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
 // ============================================================================
+// ENUMS
+// ============================================================================
+
+export const accountTypeEnum = pgEnum("account_type", [
+  "checking",
+  "savings",
+  "credit",
+  "loan",
+]);
+
+export const trackingAccountTypeEnum = pgEnum("tracking_account_type", [
+  "asset",
+  "liability",
+]);
+
+export const currencyPlacementEnum = pgEnum("currency_placement", [
+  "before",
+  "after",
+]);
+
+export const numberFormatEnum = pgEnum("number_format", [
+  "1,234.56",
+  "1.234,56",
+  "1 234.56",
+  "1 234,56",
+]);
+
+export const dateFormatEnum = pgEnum("date_format", [
+  "DD/MM/YYYY",
+  "MM/DD/YYYY",
+  "YYYY-MM-DD",
+]);
+
+// ============================================================================
 // EXISTING USER TABLE
 // ============================================================================
 
 export const users = pgTable("users", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  id: varchar("id", { length: 36 })
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
   username: text("username").notNull().unique(),
   password: text("password").notNull(),
 });
@@ -30,29 +67,43 @@ export const users = pgTable("users", {
 
 export const budgets = pgTable("budgets", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 })
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   currency: varchar("currency", { length: 10 }).notNull(),
-  currencyPlacement: varchar("currency_placement", { length: 10 }).notNull(),
-  numberFormat: varchar("number_format", { length: 20 }).notNull(),
-  dateFormat: varchar("date_format", { length: 20 }).notNull(),
-});
+  currencyPlacement: currencyPlacementEnum("currency_placement").notNull(),
+  numberFormat: numberFormatEnum("number_format").notNull(),
+  dateFormat: dateFormatEnum("date_format").notNull(),
+}, (table) => ({
+  userIdIdx: index("budgets_user_id_idx").on(table.userId),
+}));
 
 export const trackingAccounts = pgTable("tracking_accounts", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 })
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
-  type: varchar("type", { length: 20 }).notNull(), // 'asset' | 'liability'
+  type: trackingAccountTypeEnum("type").notNull(),
   balance: numeric("balance", { precision: 15, scale: 2 }).notNull().default('0'),
   notes: text("notes"),
-});
+}, (table) => ({
+  userIdIdx: index("tracking_accounts_user_id_idx").on(table.userId),
+}));
 
 export const budgetTemplates = pgTable("budget_templates", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 })
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   isDefault: boolean("is_default").notNull().default(false),
   goals: jsonb("goals").notNull(), // { [categoryId: string]: number }
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
+  userIdIdx: index("budget_templates_user_id_idx").on(table.userId),
   isDefaultIdx: index("budget_templates_is_default_idx").on(table.isDefault),
 }));
 
@@ -72,7 +123,7 @@ export const accounts = pgTable("accounts", {
   budgetId: varchar("budget_id", { length: 36 }).notNull()
     .references(() => budgets.id, { onDelete: 'cascade' }),
   name: text("name").notNull(),
-  type: varchar("type", { length: 20 }).notNull(), // 'checking' | 'savings' | 'credit' | 'loan'
+  type: accountTypeEnum("type").notNull(),
   balance: numeric("balance", { precision: 15, scale: 2 }).notNull().default('0'),
   isActive: boolean("is_active").notNull().default(true),
 }, (table) => ({
@@ -155,12 +206,21 @@ export const monthlyAssignments = pgTable("monthly_assignments", {
 // DRIZZLE RELATIONS (for query building)
 // ============================================================================
 
-export const budgetsRelations = relations(budgets, ({ many }) => ({
+export const budgetsRelations = relations(budgets, ({ one, many }) => ({
+  user: one(users, { fields: [budgets.userId], references: [users.id] }),
   accounts: many(accounts),
   categoryGroups: many(categoryGroups),
   categories: many(categories),
   transactions: many(transactions),
   monthlyAssignments: many(monthlyAssignments),
+}));
+
+export const trackingAccountsRelations = relations(trackingAccounts, ({ one }) => ({
+  user: one(users, { fields: [trackingAccounts.userId], references: [users.id] }),
+}));
+
+export const budgetTemplatesRelations = relations(budgetTemplates, ({ one }) => ({
+  user: one(users, { fields: [budgetTemplates.userId], references: [users.id] }),
 }));
 
 export const accountsRelations = relations(accounts, ({ one, many }) => ({
