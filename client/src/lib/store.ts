@@ -96,6 +96,19 @@ export interface MonthlyAssignments {
   };
 }
 
+// Shape returned by GET /api/budget-data (dates are ISO strings over JSON)
+export interface ServerBudgetData {
+  budgets: Array<Omit<Budget, 'createdAt'> & { createdAt: string }>;
+  currentBudgetId: string;
+  accounts: Account[];
+  trackingAccounts: TrackingAccount[];
+  categoryGroups: CategoryGroup[];
+  categories: Category[];
+  transactions: Transaction[];
+  monthlyAssignments: MonthlyAssignments;
+  budgetTemplates: Array<Omit<BudgetTemplate, 'createdAt'> & { createdAt: string }>;
+}
+
 interface AppState {
   budgets: Budget[];
   currentBudgetId: string;
@@ -166,6 +179,8 @@ interface AppState {
   getNetWorth: () => number;
 
   // Auth
+  _hasHydrated: boolean;
+  hydrateFromServer: (data: ServerBudgetData) => void;
   clearState: () => void;
 }
 
@@ -239,6 +254,7 @@ export const useStore = create<AppState>()(
       monthlyAssignments: INITIAL_ASSIGNMENTS,
       budgetTemplates: [],
       currentMonth: format(new Date(), 'yyyy-MM'),
+      _hasHydrated: false,
 
       // ============= BUDGETS =============
       addBudget: (budget) => set((state) => {
@@ -783,6 +799,28 @@ export const useStore = create<AppState>()(
       }),
 
       // ============= AUTH =============
+      hydrateFromServer: (data) => {
+        set({
+          budgets: data.budgets.map((b) => ({
+            ...b,
+            createdAt: new Date(b.createdAt),
+          })),
+          currentBudgetId: data.currentBudgetId,
+          accounts: data.accounts,
+          trackingAccounts: data.trackingAccounts,
+          assets: INITIAL_ASSETS,
+          categoryGroups: data.categoryGroups,
+          categories: data.categories,
+          transactions: data.transactions,
+          monthlyAssignments: data.monthlyAssignments,
+          budgetTemplates: data.budgetTemplates.map((t) => ({
+            ...t,
+            createdAt: new Date(t.createdAt),
+          })),
+          _hasHydrated: true,
+        });
+      },
+
       clearState: () => {
         if (typeof window !== 'undefined') {
           localStorage.removeItem('zerobased-storage');
@@ -799,6 +837,7 @@ export const useStore = create<AppState>()(
           monthlyAssignments: INITIAL_ASSIGNMENTS,
           budgetTemplates: [],
           currentMonth: format(new Date(), 'yyyy-MM'),
+          _hasHydrated: false,
         });
       },
 

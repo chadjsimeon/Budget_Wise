@@ -9,6 +9,7 @@ import NotFound from "@/pages/not-found";
 import { CreateAccountDialog } from "@/components/modals/CreateAccountDialog";
 import LoginPage from "@/pages/Login";
 import { useAuth } from "@/hooks/use-auth";
+import { BudgetDataProvider } from "@/components/providers/BudgetDataProvider";
 
 function App() {
   const [location, setLocation] = useLocation();
@@ -59,6 +60,7 @@ function App() {
         {!isAuthenticated ? (
           <Redirect to="/login" />
         ) : (
+          <BudgetDataProvider>
           <AppShell>
             <Switch>
               <Route path="/" component={BudgetPage} />
@@ -80,6 +82,7 @@ function App() {
               onOpenChange={setShowAccountDialog}
             />
           </AppShell>
+          </BudgetDataProvider>
         )}
       </Route>
     </Switch>
