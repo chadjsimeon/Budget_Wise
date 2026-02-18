@@ -164,6 +164,9 @@ interface AppState {
   getCategoryAvailable: (month: string, categoryId: string) => number;
   getReadyToAssign: (month: string) => number;
   getNetWorth: () => number;
+
+  // Auth
+  clearState: () => void;
 }
 
 // Initial Mock Data
@@ -778,6 +781,26 @@ export const useStore = create<AppState>()(
           budgetTemplates: [...updatedTemplates, newTemplate]
         };
       }),
+
+      // ============= AUTH =============
+      clearState: () => {
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('zerobased-storage');
+        }
+        set({
+          budgets: INITIAL_BUDGETS,
+          currentBudgetId: DEFAULT_BUDGET_ID,
+          accounts: INITIAL_ACCOUNTS,
+          trackingAccounts: INITIAL_TRACKING_ACCOUNTS,
+          assets: INITIAL_ASSETS,
+          categoryGroups: INITIAL_GROUPS,
+          categories: INITIAL_CATEGORIES,
+          transactions: INITIAL_TRANSACTIONS,
+          monthlyAssignments: INITIAL_ASSIGNMENTS,
+          budgetTemplates: [],
+          currentMonth: format(new Date(), 'yyyy-MM'),
+        });
+      },
 
       // ============= GETTERS =============
       getAccountBalance: (accountId) => {
