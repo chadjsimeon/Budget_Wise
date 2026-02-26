@@ -41,6 +41,11 @@ export interface IStorage {
     type: "checking" | "savings" | "credit" | "loan";
     balance: number;
     isActive: boolean;
+    interestRate?: number;
+    monthlyPayment?: number;
+    originalBalance?: number;
+    loanStartDate?: string;
+    linkedCategoryId?: string;
   }): Promise<void>;
   updateAccount(id: string, budgetId: string, data: Record<string, unknown>): Promise<void>;
   deleteAccount(id: string, budgetId: string): Promise<void>;
@@ -176,6 +181,11 @@ export class DbStorage implements IStorage {
     type: "checking" | "savings" | "credit" | "loan";
     balance: number;
     isActive: boolean;
+    interestRate?: number;
+    monthlyPayment?: number;
+    originalBalance?: number;
+    loanStartDate?: string;
+    linkedCategoryId?: string;
   }): Promise<void> {
     await db.insert(accounts).values({
       id: data.id,
@@ -184,13 +194,20 @@ export class DbStorage implements IStorage {
       type: data.type,
       balance: String(data.balance),
       isActive: data.isActive,
+      interestRate: data.interestRate != null ? String(data.interestRate) : null,
+      monthlyPayment: data.monthlyPayment != null ? String(data.monthlyPayment) : null,
+      originalBalance: data.originalBalance != null ? String(data.originalBalance) : null,
+      loanStartDate: data.loanStartDate ?? null,
+      linkedCategoryId: data.linkedCategoryId ?? null,
     });
   }
 
   async updateAccount(id: string, budgetId: string, data: Record<string, unknown>): Promise<void> {
     const dbData: Record<string, unknown> = { ...data };
-    if (typeof dbData.balance === 'number') {
-      dbData.balance = String(dbData.balance);
+    for (const key of ['balance', 'interestRate', 'monthlyPayment', 'originalBalance']) {
+      if (typeof dbData[key] === 'number') {
+        dbData[key] = String(dbData[key]);
+      }
     }
     await db.update(accounts)
       .set(dbData as any)
@@ -271,6 +288,7 @@ export class DbStorage implements IStorage {
       groupId: data.groupId,
       name: data.name,
       goal: data.goal != null ? String(data.goal) : null,
+      linkedAccountId: data.linkedAccountId ?? null,
     });
   }
 
@@ -279,8 +297,6 @@ export class DbStorage implements IStorage {
     if (typeof dbData.goal === 'number') {
       dbData.goal = String(dbData.goal);
     }
-    // Remove client-only fields not in the DB schema
-    delete dbData.linkedAccountId;
     await db.update(categories)
       .set(dbData as any)
       .where(and(eq(categories.id, id), eq(categories.budgetId, budgetId)));

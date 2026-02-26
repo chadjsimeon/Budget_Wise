@@ -410,6 +410,11 @@ export const useStore = create<AppState>()(
             type: newAccount.type,
             balance: newAccount.balance,
             isActive: newAccount.isActive,
+            interestRate: newAccount.interestRate,
+            monthlyPayment: newAccount.monthlyPayment,
+            originalBalance: newAccount.originalBalance,
+            loanStartDate: newAccount.loanStartDate,
+            linkedCategoryId: newAccount.linkedCategoryId,
           },
           categoryGroup: newGroup,
           category: newCategory ? {
@@ -418,6 +423,7 @@ export const useStore = create<AppState>()(
             groupId: newCategory.groupId,
             name: newCategory.name,
             goal: newCategory.goal,
+            linkedAccountId: newCategory.linkedAccountId,
           } : undefined,
         });
 

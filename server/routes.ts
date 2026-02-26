@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { hashPassword } from "./auth";
 import passport from "passport";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "./db";
@@ -65,6 +66,50 @@ export async function registerRoutes(
         res.json({ message: "Logged out" });
       });
     });
+  });
+
+  app.post("/api/auth/register", async (req, res, next) => {
+    try {
+      const { username, password } = req.body;
+
+      if (!username || !password) {
+        return res.status(400).json({ message: "Username and password are required" });
+      }
+      if (username.length < 3) {
+        return res.status(400).json({ message: "Username must be at least 3 characters" });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+
+      const existing = await storage.getUserByUsername(username);
+      if (existing) {
+        return res.status(409).json({ message: "Username already taken" });
+      }
+
+      const hashedPassword = hashPassword(password);
+      const user = await storage.createUser({ username, password: hashedPassword });
+
+      // Create a default budget for the new user
+      const budgetId = crypto.randomUUID();
+      await storage.createBudget({
+        id: budgetId,
+        userId: user.id,
+        name: "My Budget",
+        currency: "TTD",
+        currencyPlacement: "before",
+        numberFormat: "1,234.56",
+        dateFormat: "DD/MM/YYYY",
+      });
+
+      // Auto-login after registration
+      req.logIn({ id: user.id, username: user.username }, (loginErr) => {
+        if (loginErr) return next(loginErr);
+        res.status(201).json({ id: user.id, username: user.username });
+      });
+    } catch (error) {
+      next(error);
+    }
   });
 
   // ============= BUDGET DATA (read) =============
@@ -140,6 +185,11 @@ export async function registerRoutes(
           type: a.type,
           balance: parseFloat(a.balance),
           isActive: a.isActive,
+          interestRate: a.interestRate ? parseFloat(a.interestRate) : undefined,
+          monthlyPayment: a.monthlyPayment ? parseFloat(a.monthlyPayment) : undefined,
+          originalBalance: a.originalBalance ? parseFloat(a.originalBalance) : undefined,
+          loanStartDate: a.loanStartDate ?? undefined,
+          linkedCategoryId: a.linkedCategoryId ?? undefined,
         })),
         trackingAccounts: userTrackingAccounts.map((ta) => ({
           id: ta.id,
@@ -159,6 +209,7 @@ export async function registerRoutes(
           groupId: c.groupId,
           name: c.name,
           goal: c.goal ? parseFloat(c.goal) : undefined,
+          linkedAccountId: c.linkedAccountId ?? undefined,
         })),
         transactions: userTransactions.map((t) => ({
           id: t.id,
@@ -271,6 +322,7 @@ export async function registerRoutes(
           groupId: category.groupId,
           name: category.name,
           goal: category.goal,
+          linkedAccountId: category.linkedAccountId,
         });
       }
 
@@ -281,6 +333,11 @@ export async function registerRoutes(
         type: account.type,
         balance: account.balance,
         isActive: account.isActive,
+        interestRate: account.interestRate,
+        monthlyPayment: account.monthlyPayment,
+        originalBalance: account.originalBalance,
+        loanStartDate: account.loanStartDate,
+        linkedCategoryId: account.linkedCategoryId,
       });
 
       res.status(201).json({ id: account.id });
@@ -395,11 +452,11 @@ export async function registerRoutes(
   app.post("/api/categories", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { id, budgetId, groupId, name, goal } = req.body;
+      const { id, budgetId, groupId, name, goal, linkedAccountId } = req.body;
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      await storage.createCategory({ id, budgetId, groupId, name, goal });
+      await storage.createCategory({ id, budgetId, groupId, name, goal, linkedAccountId });
       res.status(201).json({ id });
     } catch (error) {
       next(error);

@@ -8,25 +8,54 @@ import { Label } from "@/components/ui/label";
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
-  const { login, isLoggingIn, loginError } = useAuth();
+  const { login, register, isLoggingIn, isRegistering } = useAuth();
+  const [isRegisterMode, setIsRegisterMode] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
+    if (isRegisterMode && password !== confirmPassword) {
+      setError("Passwords do not match");
+      return;
+    }
+
     try {
-      await login({ username, password });
+      if (isRegisterMode) {
+        await register({ username, password });
+      } else {
+        await login({ username, password });
+      }
       setLocation("/");
     } catch (err: any) {
-      const message = err?.message || "Login failed";
-      // Extract error message from API response
-      const match = message.match(/\d+:\s*(.+)/);
-      setError(match ? match[1] : message);
+      const message = err?.message || "Something went wrong";
+      // Extract error message from API response JSON
+      try {
+        const jsonMatch = message.match(/\d+:\s*(.+)/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[1]);
+          setError(parsed.message || jsonMatch[1]);
+        } else {
+          setError(message);
+        }
+      } catch {
+        const match = message.match(/\d+:\s*(.+)/);
+        setError(match ? match[1] : message);
+      }
     }
   };
+
+  const switchMode = () => {
+    setIsRegisterMode(!isRegisterMode);
+    setError(null);
+    setConfirmPassword("");
+  };
+
+  const isSubmitting = isLoggingIn || isRegistering;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
@@ -42,7 +71,9 @@ export default function LoginPage() {
             </div>
           </div>
           <CardTitle className="text-2xl">Budget Wise</CardTitle>
-          <CardDescription>Sign in to manage your budget</CardDescription>
+          <CardDescription>
+            {isRegisterMode ? "Create an account to get started" : "Sign in to manage your budget"}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -67,18 +98,60 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 required
-                autoComplete="current-password"
+                autoComplete={isRegisterMode ? "new-password" : "current-password"}
               />
             </div>
+            {isRegisterMode && (
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm your password"
+                  required
+                  autoComplete="new-password"
+                />
+              </div>
+            )}
             {error && (
               <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
                 {error}
               </div>
             )}
-            <Button type="submit" className="w-full" disabled={isLoggingIn}>
-              {isLoggingIn ? "Signing in..." : "Sign In"}
+            <Button type="submit" className="w-full" disabled={isSubmitting}>
+              {isSubmitting
+                ? (isRegisterMode ? "Creating account..." : "Signing in...")
+                : (isRegisterMode ? "Create Account" : "Sign In")
+              }
             </Button>
           </form>
+          <div className="mt-4 text-center text-sm text-muted-foreground">
+            {isRegisterMode ? (
+              <>
+                Already have an account?{" "}
+                <button
+                  type="button"
+                  onClick={switchMode}
+                  className="text-primary underline-offset-4 hover:underline"
+                >
+                  Sign in
+                </button>
+              </>
+            ) : (
+              <>
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={switchMode}
+                  className="text-primary underline-offset-4 hover:underline"
+                >
+                  Create one
+                </button>
+              </>
+            )}
+          </div>
         </CardContent>
       </Card>
     </div>
