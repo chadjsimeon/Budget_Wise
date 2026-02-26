@@ -23,6 +23,8 @@ export function formatCurrency(amount: number, budget: Budget): string {
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: budget.currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
 }
 
@@ -46,7 +48,9 @@ export function useCurrencyFormatter(): (amount: number) => string {
     return (amount: number) =>
       new Intl.NumberFormat('en-US', {
         style: 'currency',
-        currency: 'USD'
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
       }).format(amount);
   }
 

@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { format } from 'date-fns';
+import { apiRequest } from '@/lib/queryClient';
+
+async function syncToServer(method: string, url: string, data?: unknown) {
+  try {
+    await apiRequest(method, url, data);
+  } catch (err) {
+    console.error(`[sync] ${method} ${url} failed:`, err);
+  }
+}
 
 export type AccountType = 'checking' | 'savings' | 'cash' | 'credit' | 'loan';
 export type TrackingAccountType = 'asset' | 'liability';
@@ -257,28 +266,25 @@ export const useStore = create<AppState>()(
       _hasHydrated: false,
 
       // ============= BUDGETS =============
-      addBudget: (budget) => set((state) => {
-        // Create the budget
+      addBudget: (budget) => {
         const newBudget: Budget = {
           ...budget,
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           createdAt: new Date()
         };
 
-        // Generate default category groups
         const newGroups: CategoryGroup[] = DEFAULT_CATEGORY_STRUCTURE.map(template => ({
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           budgetId: newBudget.id,
           name: template.groupName
         }));
 
-        // Generate default categories linked to their groups
         const newCategories: Category[] = [];
         DEFAULT_CATEGORY_STRUCTURE.forEach((template, idx) => {
           const groupId = newGroups[idx].id;
           template.categories.forEach(categoryName => {
             newCategories.push({
-              id: Math.random().toString(36).substr(2, 9),
+              id: crypto.randomUUID(),
               budgetId: newBudget.id,
               groupId: groupId,
               name: categoryName
@@ -286,44 +292,56 @@ export const useStore = create<AppState>()(
           });
         });
 
-        // Return updated state with budget + defaults
-        return {
+        set((state) => ({
           budgets: [...state.budgets, newBudget],
           currentBudgetId: newBudget.id,
           categoryGroups: [...state.categoryGroups, ...newGroups],
           categories: [...state.categories, ...newCategories]
-        };
-      }),
+        }));
+
+        syncToServer("POST", "/api/budgets", {
+          budget: {
+            id: newBudget.id,
+            name: newBudget.name,
+            currency: newBudget.currency,
+            currencyPlacement: newBudget.currencyPlacement,
+            numberFormat: newBudget.numberFormat,
+            dateFormat: newBudget.dateFormat,
+          },
+          categoryGroups: newGroups,
+          categories: newCategories,
+        });
+      },
 
       switchBudget: (budgetId) => set({ currentBudgetId: budgetId }),
 
-      updateBudget: (budgetId, updates) => set((state) => ({
-        budgets: state.budgets.map(b => b.id === budgetId ? { ...b, ...updates } : b)
-      })),
+      updateBudget: (budgetId, updates) => {
+        set((state) => ({
+          budgets: state.budgets.map(b => b.id === budgetId ? { ...b, ...updates } : b)
+        }));
+        syncToServer("PATCH", `/api/budgets/${budgetId}`, updates);
+      },
 
-      deleteBudget: (budgetId) => set((state) => {
-        // Prevent deleting the last budget (UI should prevent this, but double-check)
-        if (state.budgets.length <= 1) {
-          return state;
-        }
+      deleteBudget: (budgetId) => {
+        const state = get();
+        if (state.budgets.length <= 1) return;
 
         const remainingBudgets = state.budgets.filter(b => b.id !== budgetId);
         const newCurrentId = state.currentBudgetId === budgetId ? remainingBudgets[0].id : state.currentBudgetId;
-
-        // Remove budget's assignments
         const { [budgetId]: removed, ...remainingAssignments } = state.monthlyAssignments;
 
-        return {
+        set({
           budgets: remainingBudgets,
           currentBudgetId: newCurrentId,
-          // Clean up all budget-related data
           accounts: state.accounts.filter(a => a.budgetId !== budgetId),
           categoryGroups: state.categoryGroups.filter(g => g.budgetId !== budgetId),
           categories: state.categories.filter(c => c.budgetId !== budgetId),
           transactions: state.transactions.filter(t => t.budgetId !== budgetId),
           monthlyAssignments: remainingAssignments
-        };
-      }),
+        });
+
+        syncToServer("DELETE", `/api/budgets/${budgetId}`);
+      },
 
       // ============= MONTH =============
       setMonth: (month) => set({ currentMonth: month }),
@@ -333,15 +351,16 @@ export const useStore = create<AppState>()(
         const currentBudgetId = get().currentBudgetId;
         const newAccount = {
           ...account,
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           budgetId: currentBudgetId,
           isActive: true
         };
 
-        // If this is a loan account with monthly payment, auto-create category
+        let newGroup: CategoryGroup | undefined;
+        let newCategory: Category | undefined;
+
         if (account.type === 'loan' && account.monthlyPayment && account.monthlyPayment > 0) {
           set((state) => {
-            // Find or create Debt Repayments group
             let debtGroupId = state.categoryGroups.find(
               g => g.budgetId === currentBudgetId &&
                    g.name.toLowerCase() === DEBT_REPAYMENTS_GROUP_NAME.toLowerCase()
@@ -350,9 +369,8 @@ export const useStore = create<AppState>()(
             let updatedGroups = state.categoryGroups;
 
             if (!debtGroupId) {
-              // Create the group
-              debtGroupId = Math.random().toString(36).substr(2, 9);
-              const newGroup: CategoryGroup = {
+              debtGroupId = crypto.randomUUID();
+              newGroup = {
                 id: debtGroupId,
                 budgetId: currentBudgetId,
                 name: DEBT_REPAYMENTS_GROUP_NAME
@@ -360,9 +378,8 @@ export const useStore = create<AppState>()(
               updatedGroups = [...state.categoryGroups, newGroup];
             }
 
-            // Create the linked category
-            const categoryId = Math.random().toString(36).substr(2, 9);
-            const newCategory: Category = {
+            const categoryId = crypto.randomUUID();
+            newCategory = {
               id: categoryId,
               budgetId: currentBudgetId,
               groupId: debtGroupId,
@@ -371,7 +388,6 @@ export const useStore = create<AppState>()(
               linkedAccountId: newAccount.id
             };
 
-            // Link account to category
             newAccount.linkedCategoryId = categoryId;
 
             return {
@@ -381,23 +397,41 @@ export const useStore = create<AppState>()(
             };
           });
         } else {
-          // Non-loan account or loan without payment - simple creation
           set((state) => ({
             accounts: [...state.accounts, newAccount]
           }));
         }
 
+        syncToServer("POST", "/api/accounts", {
+          account: {
+            id: newAccount.id,
+            budgetId: newAccount.budgetId,
+            name: newAccount.name,
+            type: newAccount.type,
+            balance: newAccount.balance,
+            isActive: newAccount.isActive,
+          },
+          categoryGroup: newGroup,
+          category: newCategory ? {
+            id: newCategory.id,
+            budgetId: newCategory.budgetId,
+            groupId: newCategory.groupId,
+            name: newCategory.name,
+            goal: newCategory.goal,
+          } : undefined,
+        });
+
         return newAccount;
       },
 
-      updateAccount: (id, updates) => set((state) => {
+      updateAccount: (id, updates) => {
+        const state = get();
         const account = state.accounts.find(a => a.id === id);
-        if (!account) return state;
+        if (!account) return;
 
         const updatedAccount = { ...account, ...updates };
         const updatedAccounts = state.accounts.map(a => a.id === id ? updatedAccount : a);
 
-        // Case 1: Loan's monthly payment changed - sync to linked category
         if (
           account.type === 'loan' &&
           account.linkedCategoryId &&
@@ -408,86 +442,87 @@ export const useStore = create<AppState>()(
               ? { ...c, goal: updates.monthlyPayment }
               : c
           );
-          return { accounts: updatedAccounts, categories: updatedCategories };
-        }
-
-        // Case 2: Account type changed from loan to non-loan - cleanup link
-        if (
+          set({ accounts: updatedAccounts, categories: updatedCategories });
+        } else if (
           account.type === 'loan' &&
           updates.type &&
           updates.type !== 'loan' &&
           account.linkedCategoryId
         ) {
-          // Remove the link but don't delete the category (user may want it)
           const updatedCategories = state.categories.map(c =>
             c.id === account.linkedCategoryId
               ? { ...c, linkedAccountId: undefined }
               : c
           );
           updatedAccount.linkedCategoryId = undefined;
-          return {
+          set({
             accounts: state.accounts.map(a => a.id === id ? updatedAccount : a),
             categories: updatedCategories
-          };
+          });
+        } else {
+          set({ accounts: updatedAccounts });
         }
 
-        return { accounts: updatedAccounts };
-      }),
+        syncToServer("PATCH", `/api/accounts/${id}`, { budgetId: account.budgetId, ...updates });
+      },
 
-      deleteAccount: (id) => set((state) => {
+      deleteAccount: (id) => {
+        const state = get();
         const account = state.accounts.find(a => a.id === id);
-        if (!account) return state;
+        if (!account) return;
 
-        // Base deletions
-        const updates = {
+        const stateUpdates: Partial<AppState> = {
           accounts: state.accounts.filter(a => a.id !== id),
           transactions: state.transactions.filter(t => t.accountId !== id)
         };
 
-        // If loan has linked category, delete it too
         if (account.linkedCategoryId) {
-          return {
-            ...updates,
-            categories: state.categories.filter(c => c.id !== account.linkedCategoryId),
-            // Also clean up monthly assignments for that category
-            monthlyAssignments: Object.fromEntries(
-              Object.entries(state.monthlyAssignments).map(([budgetId, budgetAssignments]) => [
-                budgetId,
-                Object.fromEntries(
-                  Object.entries(budgetAssignments).map(([monthKey, monthAssignments]) => [
-                    monthKey,
-                    Object.fromEntries(
-                      Object.entries(monthAssignments).filter(([catId]) => catId !== account.linkedCategoryId)
-                    )
-                  ])
-                )
-              ])
-            )
-          };
+          stateUpdates.categories = state.categories.filter(c => c.id !== account.linkedCategoryId);
+          stateUpdates.monthlyAssignments = Object.fromEntries(
+            Object.entries(state.monthlyAssignments).map(([budgetId, budgetAssignments]) => [
+              budgetId,
+              Object.fromEntries(
+                Object.entries(budgetAssignments).map(([monthKey, monthAssignments]) => [
+                  monthKey,
+                  Object.fromEntries(
+                    Object.entries(monthAssignments).filter(([catId]) => catId !== account.linkedCategoryId)
+                  )
+                ])
+              )
+            ])
+          );
         }
 
-        return updates;
-      }),
+        set(stateUpdates);
+        syncToServer("DELETE", `/api/accounts/${id}`, { budgetId: account.budgetId });
+      },
 
       // ============= TRACKING ACCOUNTS =============
-      addTrackingAccount: (account) => set((state) => ({
-        trackingAccounts: [...state.trackingAccounts, {
-          ...account,
-          id: Math.random().toString(36).substr(2, 9)
-        }]
-      })),
+      addTrackingAccount: (account) => {
+        const newAccount = { ...account, id: crypto.randomUUID() };
+        set((state) => ({
+          trackingAccounts: [...state.trackingAccounts, newAccount]
+        }));
+        syncToServer("POST", "/api/tracking-accounts", newAccount);
+      },
 
-      updateTrackingAccount: (id, updates) => set((state) => ({
-        trackingAccounts: state.trackingAccounts.map(a => a.id === id ? { ...a, ...updates } : a)
-      })),
+      updateTrackingAccount: (id, updates) => {
+        set((state) => ({
+          trackingAccounts: state.trackingAccounts.map(a => a.id === id ? { ...a, ...updates } : a)
+        }));
+        syncToServer("PATCH", `/api/tracking-accounts/${id}`, updates);
+      },
 
-      deleteTrackingAccount: (id) => set((state) => ({
-        trackingAccounts: state.trackingAccounts.filter(a => a.id !== id)
-      })),
+      deleteTrackingAccount: (id) => {
+        set((state) => ({
+          trackingAccounts: state.trackingAccounts.filter(a => a.id !== id)
+        }));
+        syncToServer("DELETE", `/api/tracking-accounts/${id}`);
+      },
 
       // ============= ASSETS (Deprecated - use tracking accounts) =============
       addAsset: (asset) => set((state) => ({
-        assets: [...state.assets, { ...asset, id: Math.random().toString(36).substr(2, 9) }]
+        assets: [...state.assets, { ...asset, id: crypto.randomUUID() }]
       })),
 
       updateAsset: (id, updates) => set((state) => ({
@@ -499,64 +534,98 @@ export const useStore = create<AppState>()(
       })),
 
       // ============= TRANSACTIONS =============
-      addTransaction: (transaction) => set((state) => {
+      addTransaction: (transaction) => {
+        const budgetId = get().currentBudgetId;
         const newTx = {
           ...transaction,
-          id: Math.random().toString(36).substr(2, 9),
-          budgetId: state.currentBudgetId
+          id: crypto.randomUUID(),
+          budgetId
         };
-        
-        const updatedAccounts = state.accounts.map(acc => {
-          if (acc.id === transaction.accountId) {
-            const newBalance = acc.balance + transaction.amount;
-            return { ...acc, balance: newBalance };
-          }
-          return acc;
-        });
-        
-        return {
-          transactions: [newTx, ...state.transactions],
-          accounts: updatedAccounts
-        };
-      }),
 
-      updateTransaction: (id, updates) => set((state) => {
+        let newAccountBalance: number | undefined;
+        set((state) => {
+          const updatedAccounts = state.accounts.map(acc => {
+            if (acc.id === transaction.accountId) {
+              const newBalance = acc.balance + transaction.amount;
+              newAccountBalance = newBalance;
+              return { ...acc, balance: newBalance };
+            }
+            return acc;
+          });
+          return {
+            transactions: [newTx, ...state.transactions],
+            accounts: updatedAccounts
+          };
+        });
+
+        syncToServer("POST", "/api/transactions", {
+          transaction: {
+            id: newTx.id,
+            budgetId: newTx.budgetId,
+            date: newTx.date,
+            payee: newTx.payee,
+            categoryId: newTx.categoryId,
+            accountId: newTx.accountId,
+            amount: newTx.amount,
+            memo: newTx.memo,
+            cleared: newTx.cleared,
+          },
+          accountUpdate: newAccountBalance !== undefined
+            ? { id: transaction.accountId, balance: newAccountBalance }
+            : undefined,
+        });
+      },
+
+      updateTransaction: (id, updates) => {
+        const state = get();
         const oldTx = state.transactions.find(t => t.id === id);
-        if (!oldTx) return state;
-        
-        let updatedAccounts = state.accounts.map(acc => 
-          acc.id === oldTx.accountId 
+        if (!oldTx) return;
+
+        let updatedAccounts = state.accounts.map(acc =>
+          acc.id === oldTx.accountId
             ? { ...acc, balance: acc.balance - oldTx.amount }
             : acc
         );
-        
+
         const newTx = { ...oldTx, ...updates };
-        
+
         updatedAccounts = updatedAccounts.map(acc => {
           if (acc.id === newTx.accountId) {
-            const newBalance = acc.balance + newTx.amount;
-            return { ...acc, balance: newBalance };
+            return { ...acc, balance: acc.balance + newTx.amount };
           }
           return acc;
         });
-        
-        return {
+
+        set({
           transactions: state.transactions.map(t => t.id === id ? newTx : t),
           accounts: updatedAccounts
-        };
-      }),
+        });
 
-      deleteTransaction: (id) => set((state) => {
+        // Collect affected account balances
+        const accountUpdates: Array<{ id: string; balance: number }> = [];
+        for (const acc of updatedAccounts) {
+          const orig = state.accounts.find(a => a.id === acc.id);
+          if (orig && orig.balance !== acc.balance) {
+            accountUpdates.push({ id: acc.id, balance: acc.balance });
+          }
+        }
+
+        syncToServer("PATCH", `/api/transactions/${id}`, {
+          budgetId: oldTx.budgetId,
+          updates,
+          accountUpdates: accountUpdates.length > 0 ? accountUpdates : undefined,
+        });
+      },
+
+      deleteTransaction: (id) => {
+        const state = get();
         const tx = state.transactions.find(t => t.id === id);
-        if (!tx) return state;
+        if (!tx) return;
 
-        // Check if this is a transfer transaction
         const isTransfer = tx.payee.startsWith('Transfer to') || tx.payee.startsWith('Transfer from');
         let pairedTransferId: string | null = null;
 
         if (isTransfer) {
-          // Find the paired transfer transaction
-          // It should have the same date and memo, but opposite direction
           pairedTransferId = state.transactions.find(t =>
             t.id !== id &&
             t.date === tx.date &&
@@ -572,65 +641,85 @@ export const useStore = create<AppState>()(
 
         const pairedTx = pairedTransferId ? state.transactions.find(t => t.id === pairedTransferId) : null;
 
-        // Update accounts - reverse the balance changes from both transactions
-        let updatedAccounts = state.accounts.map(acc => {
+        const updatedAccounts = state.accounts.map(acc => {
           let newBalance = acc.balance;
-
-          // Reverse the primary transaction
           if (acc.id === tx.accountId) {
             newBalance = acc.balance - tx.amount;
           }
-
-          // Reverse the paired transaction if it exists
           if (pairedTx && acc.id === pairedTx.accountId) {
             newBalance = acc.balance - pairedTx.amount;
           }
-
-          // Update balance for affected accounts
           if (acc.id === tx.accountId || (pairedTx && acc.id === pairedTx.accountId)) {
             return { ...acc, balance: newBalance };
           }
-
           return acc;
         });
 
-        // Remove both transactions if it's a transfer, otherwise just the one
         const transactionsToRemove = pairedTransferId ? [id, pairedTransferId] : [id];
 
-        return {
+        set({
           transactions: state.transactions.filter(t => !transactionsToRemove.includes(t.id)),
           accounts: updatedAccounts
-        };
-      }),
+        });
+
+        // Collect affected account balances for the server
+        const accountUpdates: Array<{ id: string; balance: number }> = [];
+        for (const acc of updatedAccounts) {
+          const orig = state.accounts.find(a => a.id === acc.id);
+          if (orig && orig.balance !== acc.balance) {
+            accountUpdates.push({ id: acc.id, balance: acc.balance });
+          }
+        }
+
+        syncToServer("DELETE", `/api/transactions/${id}`, {
+          budgetId: tx.budgetId,
+          pairedTransactionId: pairedTransferId,
+          accountUpdates: accountUpdates.length > 0 ? accountUpdates : undefined,
+        });
+      },
 
       // ============= CATEGORIES =============
-      addCategory: (category) => set((state) => ({
-        categories: [...state.categories, {
-          ...category,
-          id: Math.random().toString(36).substr(2, 9),
-          budgetId: state.currentBudgetId
-        }]
-      })),
+      addCategory: (category) => {
+        const budgetId = get().currentBudgetId;
+        const newCategory = { ...category, id: crypto.randomUUID(), budgetId };
+        set((state) => ({
+          categories: [...state.categories, newCategory]
+        }));
+        syncToServer("POST", "/api/categories", newCategory);
+      },
 
-      updateCategory: (id, updates) => set((state) => ({
-        categories: state.categories.map(c => c.id === id ? { ...c, ...updates } : c)
-      })),
+      updateCategory: (id, updates) => {
+        set((state) => ({
+          categories: state.categories.map(c => c.id === id ? { ...c, ...updates } : c)
+        }));
+        const cat = get().categories.find(c => c.id === id);
+        if (cat) {
+          syncToServer("PATCH", `/api/categories/${id}`, { budgetId: cat.budgetId, ...updates });
+        }
+      },
 
-      setCategoryGoal: (categoryId, goal) => set((state) => ({
-        categories: state.categories.map(c =>
-          c.id === categoryId ? { ...c, goal } : c
-        )
-      })),
+      setCategoryGoal: (categoryId, goal) => {
+        set((state) => ({
+          categories: state.categories.map(c =>
+            c.id === categoryId ? { ...c, goal } : c
+          )
+        }));
+        const cat = get().categories.find(c => c.id === categoryId);
+        if (cat) {
+          syncToServer("PATCH", `/api/categories/${categoryId}`, { budgetId: cat.budgetId, goal });
+        }
+      },
 
-      deleteCategory: (id) => set((state) => {
+      deleteCategory: (id) => {
+        const state = get();
         const category = state.categories.find(c => c.id === id);
+        const budgetId = category?.budgetId || state.currentBudgetId;
 
-        // Base deletion logic
-        const updates = {
+        const stateUpdates: Partial<AppState> = {
           categories: state.categories.filter(c => c.id !== id),
           monthlyAssignments: Object.fromEntries(
-            Object.entries(state.monthlyAssignments).map(([budgetId, budgetAssignments]) => [
-              budgetId,
+            Object.entries(state.monthlyAssignments).map(([bId, budgetAssignments]) => [
+              bId,
               Object.fromEntries(
                 Object.entries(budgetAssignments).map(([monthKey, monthAssignments]) => [
                   monthKey,
@@ -641,126 +730,156 @@ export const useStore = create<AppState>()(
           )
         };
 
-        // If this category was linked to a loan account, clear the link
         if (category?.linkedAccountId) {
-          return {
-            ...updates,
-            accounts: state.accounts.map(a =>
-              a.id === category.linkedAccountId
-                ? { ...a, linkedCategoryId: undefined }
-                : a
-            )
-          };
+          stateUpdates.accounts = state.accounts.map(a =>
+            a.id === category.linkedAccountId
+              ? { ...a, linkedCategoryId: undefined }
+              : a
+          );
         }
 
-        return updates;
-      }),
+        set(stateUpdates);
+        syncToServer("DELETE", `/api/categories/${id}`, { budgetId });
+      },
 
-      addCategoryGroup: (group) => set((state) => ({
-        categoryGroups: [...state.categoryGroups, {
-          ...group,
-          id: Math.random().toString(36).substr(2, 9),
-          budgetId: state.currentBudgetId
-        }]
-      })),
+      addCategoryGroup: (group) => {
+        const budgetId = get().currentBudgetId;
+        const newGroup = { ...group, id: crypto.randomUUID(), budgetId };
+        set((state) => ({
+          categoryGroups: [...state.categoryGroups, newGroup]
+        }));
+        syncToServer("POST", "/api/category-groups", newGroup);
+      },
 
-      updateCategoryGroup: (id, updates) => set((state) => ({
-        categoryGroups: state.categoryGroups.map(g => g.id === id ? { ...g, ...updates} : g)
-      })),
+      updateCategoryGroup: (id, updates) => {
+        set((state) => ({
+          categoryGroups: state.categoryGroups.map(g => g.id === id ? { ...g, ...updates } : g)
+        }));
+        const group = get().categoryGroups.find(g => g.id === id);
+        if (group) {
+          syncToServer("PATCH", `/api/category-groups/${id}`, { budgetId: group.budgetId, ...updates });
+        }
+      },
 
-      deleteCategoryGroup: (id) => set((state) => ({
-        categoryGroups: state.categoryGroups.filter(g => g.id !== id),
-        categories: state.categories.filter(c => c.groupId !== id)
-      })),
+      deleteCategoryGroup: (id) => {
+        const group = get().categoryGroups.find(g => g.id === id);
+        const budgetId = group?.budgetId || get().currentBudgetId;
+        set((state) => ({
+          categoryGroups: state.categoryGroups.filter(g => g.id !== id),
+          categories: state.categories.filter(c => c.groupId !== id)
+        }));
+        syncToServer("DELETE", `/api/category-groups/${id}`, { budgetId });
+      },
 
       // ============= BUDGET =============
-      setCategoryAssignment: (month, categoryId, amount) => set((state) => {
-        const budgetId = state.currentBudgetId;
-        const budgetAssignments = state.monthlyAssignments[budgetId] || {};
-
-        return {
-          monthlyAssignments: {
-            ...state.monthlyAssignments,
-            [budgetId]: {
-              ...budgetAssignments,
-              [month]: {
-                ...(budgetAssignments[month] || {}),
-                [categoryId]: amount
+      setCategoryAssignment: (month, categoryId, amount) => {
+        const budgetId = get().currentBudgetId;
+        set((state) => {
+          const budgetAssignments = state.monthlyAssignments[budgetId] || {};
+          return {
+            monthlyAssignments: {
+              ...state.monthlyAssignments,
+              [budgetId]: {
+                ...budgetAssignments,
+                [month]: {
+                  ...(budgetAssignments[month] || {}),
+                  [categoryId]: amount
+                }
               }
             }
-          }
-        };
-      }),
+          };
+        });
+        syncToServer("PUT", "/api/assignments", { budgetId, monthKey: month, categoryId, amount });
+      },
 
-      moveMoney: (fromCategoryId, toCategoryId, amount, month) => set((state) => {
-        const budgetId = state.currentBudgetId;
-        const budgetAssignments = state.monthlyAssignments[budgetId] || {};
-        const currentAssignments = budgetAssignments[month] || {};
-        const fromAmount = currentAssignments[fromCategoryId] || 0;
-        const toAmount = currentAssignments[toCategoryId] || 0;
-
-        return {
-          monthlyAssignments: {
-            ...state.monthlyAssignments,
-            [budgetId]: {
-              ...budgetAssignments,
-              [month]: {
-                ...currentAssignments,
-                [fromCategoryId]: fromAmount - amount,
-                [toCategoryId]: toAmount + amount
+      moveMoney: (fromCategoryId, toCategoryId, amount, month) => {
+        const budgetId = get().currentBudgetId;
+        set((state) => {
+          const budgetAssignments = state.monthlyAssignments[budgetId] || {};
+          const currentAssignments = budgetAssignments[month] || {};
+          const fromAmount = currentAssignments[fromCategoryId] || 0;
+          const toAmount = currentAssignments[toCategoryId] || 0;
+          return {
+            monthlyAssignments: {
+              ...state.monthlyAssignments,
+              [budgetId]: {
+                ...budgetAssignments,
+                [month]: {
+                  ...currentAssignments,
+                  [fromCategoryId]: fromAmount - amount,
+                  [toCategoryId]: toAmount + amount
+                }
               }
             }
-          }
-        };
-      }),
+          };
+        });
+        // Get the final amounts after the state update
+        const finalState = get();
+        const finalAssignments = finalState.monthlyAssignments[budgetId]?.[month] || {};
+        syncToServer("PUT", "/api/assignments", {
+          budgetId, monthKey: month,
+          categoryId: fromCategoryId,
+          amount: finalAssignments[fromCategoryId] || 0,
+        });
+        syncToServer("PUT", "/api/assignments", {
+          budgetId, monthKey: month,
+          categoryId: toCategoryId,
+          amount: finalAssignments[toCategoryId] || 0,
+        });
+      },
 
       // ============= BUDGET TEMPLATES =============
-      addBudgetTemplate: (template) => set((state) => {
+      addBudgetTemplate: (template) => {
         const newTemplate = {
           ...template,
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           createdAt: new Date()
         };
 
-        // If this is set as default, unset other defaults
-        const updatedTemplates = template.isDefault
-          ? state.budgetTemplates.map(t => ({ ...t, isDefault: false }))
-          : state.budgetTemplates;
-
-        return {
-          budgetTemplates: [...updatedTemplates, newTemplate]
-        };
-      }),
-
-      updateBudgetTemplate: (id, updates) => set((state) => {
-        const updatedTemplates = state.budgetTemplates.map(t => {
-          if (t.id === id) {
-            return { ...t, ...updates };
-          }
-          // If we're setting a new default, unset others
-          if (updates.isDefault === true && t.isDefault) {
-            return { ...t, isDefault: false };
-          }
-          return t;
+        set((state) => {
+          const updatedTemplates = template.isDefault
+            ? state.budgetTemplates.map(t => ({ ...t, isDefault: false }))
+            : state.budgetTemplates;
+          return { budgetTemplates: [...updatedTemplates, newTemplate] };
         });
 
-        return { budgetTemplates: updatedTemplates };
-      }),
+        syncToServer("POST", "/api/budget-templates", {
+          id: newTemplate.id,
+          name: newTemplate.name,
+          isDefault: newTemplate.isDefault,
+          goals: newTemplate.goals,
+        });
+      },
 
-      deleteBudgetTemplate: (id) => set((state) => ({
-        budgetTemplates: state.budgetTemplates.filter(t => t.id !== id)
-      })),
+      updateBudgetTemplate: (id, updates) => {
+        set((state) => {
+          const updatedTemplates = state.budgetTemplates.map(t => {
+            if (t.id === id) return { ...t, ...updates };
+            if (updates.isDefault === true && t.isDefault) return { ...t, isDefault: false };
+            return t;
+          });
+          return { budgetTemplates: updatedTemplates };
+        });
+        syncToServer("PATCH", `/api/budget-templates/${id}`, updates);
+      },
 
-      applyBudgetTemplate: (templateId, month) => set((state) => {
+      deleteBudgetTemplate: (id) => {
+        set((state) => ({
+          budgetTemplates: state.budgetTemplates.filter(t => t.id !== id)
+        }));
+        syncToServer("DELETE", `/api/budget-templates/${id}`);
+      },
+
+      applyBudgetTemplate: (templateId, month) => {
+        const state = get();
         const template = state.budgetTemplates.find(t => t.id === templateId);
-        if (!template) return state;
+        if (!template) return;
 
-        // Apply template goals to category assignments for the month
         const assignments = { ...template.goals };
         const budgetId = state.currentBudgetId;
         const budgetAssignments = state.monthlyAssignments[budgetId] || {};
 
-        return {
+        set({
           monthlyAssignments: {
             ...state.monthlyAssignments,
             [budgetId]: {
@@ -768,11 +887,19 @@ export const useStore = create<AppState>()(
               [month]: assignments
             }
           }
-        };
-      }),
+        });
 
-      saveCurrentAsTemplate: (name, isDefault = false) => set((state) => {
-        // Get current month's goals from categories
+        // Bulk upsert all assignments from the template
+        const bulkAssignments = Object.entries(assignments).map(([categoryId, amount]) => ({
+          monthKey: month,
+          categoryId,
+          amount,
+        }));
+        syncToServer("PUT", "/api/assignments/bulk", { budgetId, assignments: bulkAssignments });
+      },
+
+      saveCurrentAsTemplate: (name, isDefault = false) => {
+        const state = get();
         const goals: { [key: string]: number } = {};
         state.categories.forEach(cat => {
           if (cat.goal && cat.goal > 0) {
@@ -781,22 +908,27 @@ export const useStore = create<AppState>()(
         });
 
         const newTemplate = {
-          id: Math.random().toString(36).substr(2, 9),
+          id: crypto.randomUUID(),
           name,
           isDefault,
           goals,
           createdAt: new Date()
         };
 
-        // If this is set as default, unset other defaults
-        const updatedTemplates = isDefault
-          ? state.budgetTemplates.map(t => ({ ...t, isDefault: false }))
-          : state.budgetTemplates;
+        set((s) => {
+          const updatedTemplates = isDefault
+            ? s.budgetTemplates.map(t => ({ ...t, isDefault: false }))
+            : s.budgetTemplates;
+          return { budgetTemplates: [...updatedTemplates, newTemplate] };
+        });
 
-        return {
-          budgetTemplates: [...updatedTemplates, newTemplate]
-        };
-      }),
+        syncToServer("POST", "/api/budget-templates", {
+          id: newTemplate.id,
+          name: newTemplate.name,
+          isDefault: newTemplate.isDefault,
+          goals: newTemplate.goals,
+        });
+      },
 
       // ============= AUTH =============
       hydrateFromServer: (data) => {
