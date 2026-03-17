@@ -16,6 +16,20 @@ services:
       timeout: 5s
       retries: 5
 
+  app:
+    build: .
+    container_name: budgetwise-app
+    ports:
+      - "5000:5000"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/budgetwise
+      PORT: "5000"
+      NODE_ENV: production
+      SESSION_SECRET: change-me-in-production
+    depends_on:
+      postgres:
+        condition: service_healthy
+
 volumes:
   pgdata:
     driver: local
