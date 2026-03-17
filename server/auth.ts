@@ -24,17 +24,24 @@ export function hashPassword(password: string): string {
 export function setupAuth(app: Express) {
   const PgStore = connectPgSimple(session);
 
+  const isProduction = process.env.NODE_ENV === "production";
+
+  if (isProduction) {
+    app.set("trust proxy", 1);
+  }
+
   const sessionSettings: session.SessionOptions = {
     secret: process.env.SESSION_SECRET || "budget-wise-secret-key-change-in-production",
     resave: false,
     saveUninitialized: false,
+    proxy: isProduction,
     store: new PgStore({
       pool,
       tableName: "session",
       createTableIfMissing: true,
     }),
     cookie: {
-      secure: process.env.NODE_ENV === "production",
+      secure: isProduction ? "auto" : false,
       httpOnly: true,
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     },
