@@ -16,8 +16,10 @@ import {
   Building2,
   TrendingUp,
   Trash2,
-  Pencil
+  Pencil,
+  LogOut
 } from 'lucide-react';
+import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { CreateAccountDialog } from '@/components/modals/CreateAccountDialog';
 import { CreateBudgetDialog } from '@/components/modals/CreateBudgetDialog';
@@ -40,8 +42,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useState } from 'react';
 
-export function Sidebar() {
-  const [location] = useLocation();
+export function Sidebar({ className, onNavigate }: { className?: string; onNavigate?: () => void }) {
+  const [location, rawSetLocation] = useLocation();
+  const setLocation = (path: string) => {
+    rawSetLocation(path);
+    onNavigate?.();
+  };
+  const { user, logout, isLoggingOut } = useAuth();
   const {
     budgets,
     currentBudgetId,
@@ -111,11 +118,11 @@ export function Sidebar() {
   const NavItem = ({ href, icon: Icon, label }: { href: string, icon: any, label: string }) => {
     const isActive = location === href;
     return (
-      <Link href={href}>
+      <Link href={href} onClick={() => onNavigate?.()}>
         <div className={cn(
           "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors cursor-pointer",
-          isActive 
-            ? "bg-sidebar-accent text-white" 
+          isActive
+            ? "bg-sidebar-accent text-white"
             : "text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-white"
         )}>
           <Icon className="w-4 h-4" />
@@ -126,7 +133,7 @@ export function Sidebar() {
   };
 
   return (
-    <div className="w-64 bg-sidebar text-sidebar-foreground flex flex-col h-screen border-r border-sidebar-border">
+    <div className={cn("w-64 bg-sidebar text-sidebar-foreground flex flex-col h-screen border-r border-sidebar-border", className)}>
       {/* Logo Area */}
       <div className="p-6">
         <div className="flex items-center gap-3 font-bold text-xl text-white">
@@ -428,16 +435,33 @@ export function Sidebar() {
 
       {/* User / Settings Footer */}
       <div className="p-4 border-t border-sidebar-border">
-        <div className="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-sidebar-accent/50 transition-colors cursor-pointer text-sidebar-foreground/80 hover:text-white">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center text-xs font-bold text-white shadow-md">
-            BW
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">Budget Wise</p>
-            <p className="text-xs opacity-70 truncate">{currentBudget?.name}</p>
-          </div>
-          <Settings className="w-4 h-4 opacity-70" />
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <div className="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-sidebar-accent/50 transition-colors cursor-pointer text-sidebar-foreground/80 hover:text-white">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center text-xs font-bold text-white shadow-md">
+                {user?.username?.charAt(0).toUpperCase() ?? 'BW'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{user?.username ?? 'Budget Wise'}</p>
+                <p className="text-xs opacity-70 truncate">{currentBudget?.name}</p>
+              </div>
+              <Settings className="w-4 h-4 opacity-70" />
+            </div>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" align="start" className="w-56">
+            <DropdownMenuItem
+              className="text-destructive focus:text-destructive cursor-pointer"
+              disabled={isLoggingOut}
+              onSelect={async () => {
+                await logout();
+                setLocation('/login');
+              }}
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              {isLoggingOut ? 'Logging out...' : 'Log Out'}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* Delete Budget Confirmation Dialog */}

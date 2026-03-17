@@ -36,6 +36,15 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import { MoveMoneyDialog } from '@/components/modals/MoveMoneyDialog';
 import { CreateCategoryDialog } from '@/components/modals/CreateCategoryDialog';
 import { CreateCategoryGroupDialog } from '@/components/modals/CreateCategoryGroupDialog';
@@ -83,6 +92,12 @@ export default function BudgetPage() {
   const [deletingGroup, setDeletingGroup] = useState<typeof categoryGroups[0] | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
+  // State for template dialogs
+  const [isSaveTemplateOpen, setIsSaveTemplateOpen] = useState(false);
+  const [templateName, setTemplateName] = useState('');
+  const [templateIsDefault, setTemplateIsDefault] = useState(false);
+  const [isLoadTemplateOpen, setIsLoadTemplateOpen] = useState(false);
+
   const toggleGroup = (groupId: string) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
   };
@@ -100,32 +115,53 @@ export default function BudgetPage() {
   };
 
   const handleSaveTemplate = () => {
-    const name = prompt('Enter template name:');
-    if (name) {
-      const isDefault = confirm('Set as default template for new months?');
-      saveCurrentAsTemplate(name, isDefault);
-      alert(`Template "${name}" saved!`);
+    setTemplateName('');
+    setTemplateIsDefault(false);
+    setIsSaveTemplateOpen(true);
+  };
+
+  const confirmSaveTemplate = () => {
+    if (!templateName.trim()) {
+      toast({ title: "Missing name", description: "Please enter a template name", variant: "destructive" });
+      return;
     }
+    saveCurrentAsTemplate(templateName, templateIsDefault);
+    toast({ title: "Template saved", description: `"${templateName}" has been saved` });
+    setIsSaveTemplateOpen(false);
   };
 
   const handleLoadTemplate = () => {
     if (budgetTemplates.length === 0) {
-      alert('No templates saved yet.');
+      toast({ title: "No templates", description: "No templates saved yet. Save one first." });
       return;
     }
-    const templateOptions = budgetTemplates.map((t, i) => `${i + 1}. ${t.name}${t.isDefault ? ' (Default)' : ''}`).join('\n');
-    const choice = prompt(`Select a template:\n${templateOptions}\n\nEnter number:`);
-    if (choice) {
-      const index = parseInt(choice) - 1;
-      if (index >= 0 && index < budgetTemplates.length) {
-        applyBudgetTemplate(budgetTemplates[index].id, currentMonth);
-        alert(`Template "${budgetTemplates[index].name}" applied to ${format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMMM yyyy')}!`);
-      }
+    setIsLoadTemplateOpen(true);
+  };
+
+  const handleApplyTemplate = (templateId: string) => {
+    const template = budgetTemplates.find(t => t.id === templateId);
+    if (template) {
+      applyBudgetTemplate(templateId, currentMonth);
+      toast({
+        title: "Template applied",
+        description: `"${template.name}" applied to ${format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMMM yyyy')}`
+      });
     }
+    setIsLoadTemplateOpen(false);
   };
 
   const readyToAssign = getReadyToAssign(currentMonth);
   const formatCurrency = useCurrencyFormatter();
+
+  // Calculate "Left Over from Last Month" — sum of positive category availables from previous month
+  const leftOverFromLastMonth = useMemo(() => {
+    const prevDate = subMonths(parse(currentMonth, 'yyyy-MM', new Date()), 1);
+    const prevMonth = format(prevDate, 'yyyy-MM');
+    return categories.reduce((sum, cat) => {
+      const avail = getCategoryAvailable(prevMonth, cat.id);
+      return avail > 0 ? sum + avail : sum;
+    }, 0);
+  }, [categories, currentMonth, getCategoryAvailable]);
 
   // Auto-assign function: fund categories to their goal amounts
   const handleEditGroup = (group: typeof categoryGroups[0]) => {
@@ -155,7 +191,8 @@ export default function BudgetPage() {
     let remainingToAssign = readyToAssign;
 
     if (remainingToAssign <= 0) {
-      alert('No money available to assign. Ready to Assign must be positive.');
+      toast({ title: "Nothing to assign", description: "Ready to Assign must be positive." });
+
       return;
     }
 
@@ -212,7 +249,7 @@ export default function BudgetPage() {
     });
 
     const totalAssigned = readyToAssign - remainingToAssign;
-    alert(`Auto-assigned ${formatCurrency(totalAssigned)} to ${categoriesFunded} ${categoriesFunded === 1 ? 'category' : 'categories'} to meet goals.`);
+    toast({ title: "Auto-assign complete", description: `Assigned ${formatCurrency(totalAssigned)} to ${categoriesFunded} ${categoriesFunded === 1 ? 'category' : 'categories'}` });
   };
 
   // Calculate filter counts, month summary, and cost to be me
@@ -320,7 +357,7 @@ export default function BudgetPage() {
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Centered Header */}
         <header className="flex-none bg-white border-b">
-          <div className="px-8 py-6 flex items-center justify-center gap-8">
+          <div className="px-4 md:px-8 py-4 md:py-6 flex flex-col md:flex-row items-center justify-center gap-4 md:gap-8">
             {/* Month Selector */}
             <div className="flex items-center gap-3">
               <Button
@@ -335,9 +372,6 @@ export default function BudgetPage() {
                 <span className="text-2xl font-bold text-slate-900">
                   {format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMM yyyy')}
                 </span>
-                <Button variant="ghost" size="sm" className="text-slate-500">
-                  <span className="text-sm">Enter a note...</span>
-                </Button>
               </div>
               <Button
                 variant="ghost"
@@ -367,7 +401,7 @@ export default function BudgetPage() {
           </div>
 
           {/* Filter Tabs */}
-          <div className="border-t border-slate-200 px-8 flex items-center justify-between bg-slate-50/50">
+          <div className="border-t border-slate-200 px-4 md:px-8 flex flex-wrap items-center justify-between bg-slate-50/50 gap-2">
             <div className="flex items-center gap-6">
             <button
               onClick={() => setFilter('all')}
@@ -443,11 +477,11 @@ export default function BudgetPage() {
         <div className="flex-1 overflow-auto bg-white">
           <div className="max-w-5xl mx-auto">
             {/* Table Header */}
-            <div className="sticky top-0 bg-slate-50 border-b border-slate-200 grid grid-cols-[1fr_140px_140px_140px_140px] gap-4 px-6 py-3">
+            <div className="sticky top-0 bg-slate-50 border-b border-slate-200 grid grid-cols-[1fr_100px_100px] md:grid-cols-[1fr_140px_140px_140px_140px] gap-2 md:gap-4 px-4 md:px-6 py-3">
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</div>
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Goal</div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right hidden md:block">Goal</div>
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Assigned</div>
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Activity</div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right hidden md:block">Activity</div>
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Available</div>
             </div>
 
@@ -516,7 +550,7 @@ export default function BudgetPage() {
       </div>
 
       {/* Right Sidebar - Month Summary */}
-      <div className="w-80 border-l border-slate-200 bg-white flex flex-col">
+      <div className="hidden lg:flex w-80 border-l border-slate-200 bg-white flex-col">
         <div className="p-6 border-b border-slate-200">
           <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
             {format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMMM')}'s Summary
@@ -528,7 +562,7 @@ export default function BudgetPage() {
           {/* Left Over from Last Month */}
           <div>
             <div className="text-sm text-slate-500 mb-2">Left Over from Last Month</div>
-            <div className="text-2xl font-bold text-slate-900">{formatCurrency(0)}</div>
+            <div className="text-2xl font-bold text-slate-900">{formatCurrency(leftOverFromLastMonth)}</div>
           </div>
 
           {/* Assigned in [Month] */}
@@ -621,6 +655,67 @@ export default function BudgetPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Save Template Dialog */}
+      <Dialog open={isSaveTemplateOpen} onOpenChange={setIsSaveTemplateOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Save as Template</DialogTitle>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="template-name">Template Name</Label>
+              <Input
+                id="template-name"
+                value={templateName}
+                onChange={(e) => setTemplateName(e.target.value)}
+                placeholder="e.g. Monthly Basics"
+                autoFocus
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="template-default"
+                checked={templateIsDefault}
+                onCheckedChange={(checked) => setTemplateIsDefault(checked === true)}
+              />
+              <Label htmlFor="template-default" className="text-sm font-normal cursor-pointer">
+                Set as default template for new months
+              </Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsSaveTemplateOpen(false)}>Cancel</Button>
+            <Button onClick={confirmSaveTemplate}>Save Template</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Load Template Dialog */}
+      <Dialog open={isLoadTemplateOpen} onOpenChange={setIsLoadTemplateOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Load Template</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-2">
+            {budgetTemplates.map((template) => (
+              <button
+                key={template.id}
+                onClick={() => handleApplyTemplate(template.id)}
+                className="w-full text-left px-4 py-3 rounded-lg border hover:bg-slate-50 transition-colors flex items-center justify-between"
+              >
+                <span className="font-medium">{template.name}</span>
+                {template.isDefault && (
+                  <Badge variant="secondary" className="text-xs">Default</Badge>
+                )}
+              </button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsLoadTemplateOpen(false)}>Cancel</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

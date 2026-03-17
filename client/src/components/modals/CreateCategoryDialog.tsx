@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '@/lib/store';
+import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
   DialogContent,
@@ -52,6 +53,8 @@ export function CreateCategoryDialog({ trigger, groupId, onSuccess }: CreateCate
   // Filter by current budget
   const categoryGroups = allCategoryGroups.filter(g => g.budgetId === currentBudgetId);
 
+  const { toast } = useToast();
+
   const [formData, setFormData] = useState({
     name: '',
     groupId: groupId || ''
@@ -61,7 +64,7 @@ export function CreateCategoryDialog({ trigger, groupId, onSuccess }: CreateCate
     e.preventDefault();
 
     if (!formData.name.trim() || !formData.groupId) {
-      alert('Please enter a category name and select a group');
+      toast({ title: "Missing fields", description: "Please enter a category name and select a group", variant: "destructive" });
       return;
     }
 

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useStore, CategoryGroup } from '@/lib/store';
+import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
   DialogContent,
@@ -48,6 +49,7 @@ export function CreateCategoryGroupDialog({
 }: CreateCategoryGroupDialogProps) {
   const [internalOpen, setInternalOpen] = useState(false);
   const { addCategoryGroup, updateCategoryGroup } = useStore();
+  const { toast } = useToast();
 
   const [groupName, setGroupName] = useState('');
 
@@ -72,7 +74,7 @@ export function CreateCategoryGroupDialog({
     e.preventDefault();
 
     if (!groupName.trim()) {
-      alert('Please enter a category group name');
+      toast({ title: "Missing name", description: "Please enter a category group name", variant: "destructive" });
       return;
     }
 

@@ -126,6 +126,11 @@ export const accounts = pgTable("accounts", {
   type: accountTypeEnum("type").notNull(),
   balance: numeric("balance", { precision: 15, scale: 2 }).notNull().default('0'),
   isActive: boolean("is_active").notNull().default(true),
+  interestRate: numeric("interest_rate", { precision: 7, scale: 4 }),
+  monthlyPayment: numeric("monthly_payment", { precision: 15, scale: 2 }),
+  originalBalance: numeric("original_balance", { precision: 15, scale: 2 }),
+  loanStartDate: varchar("loan_start_date", { length: 10 }),
+  linkedCategoryId: varchar("linked_category_id", { length: 36 }),
 }, (table) => ({
   budgetIdIdx: index("accounts_budget_id_idx").on(table.budgetId),
   activeIdx: index("accounts_is_active_idx").on(table.isActive),
@@ -152,6 +157,7 @@ export const categories = pgTable("categories", {
     .references(() => categoryGroups.id, { onDelete: 'cascade' }),
   name: text("name").notNull(),
   goal: numeric("goal", { precision: 15, scale: 2 }),
+  linkedAccountId: varchar("linked_account_id", { length: 36 }),
 }, (table) => ({
   budgetIdIdx: index("categories_budget_id_idx").on(table.budgetId),
   groupIdIdx: index("categories_group_id_idx").on(table.groupId),

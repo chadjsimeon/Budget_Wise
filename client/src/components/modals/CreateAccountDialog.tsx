@@ -1,20 +1,31 @@
 import { useState, useEffect } from 'react';
 import { useStore, AccountType, Account } from '@/lib/store';
 import { format } from 'date-fns';
-import { 
-  Dialog, 
-  DialogContent, 
-  DialogHeader, 
-  DialogTitle, 
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
   DialogTrigger,
   DialogFooter,
   DialogDescription
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { PlusCircle } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface CreateAccountDialogProps {
   trigger?: React.ReactNode;
@@ -30,6 +41,9 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
   const isControlled = controlledOpen !== undefined;
   const open = isControlled ? controlledOpen : internalOpen;
   const setOpen = isControlled ? (onOpenChange || (() => {})) : setInternalOpen;
+
+  const { toast } = useToast();
+  const [confirmAction, setConfirmAction] = useState<{ title: string; description: string; action: () => void } | null>(null);
 
   const addAccount = useStore(state => state.addAccount);
   const updateAccount = useStore(state => state.updateAccount);
@@ -73,7 +87,7 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
 
     // Validate name
     if (!formData.name.trim()) {
-      alert('Account name is required');
+      toast({ title: "Missing name", description: "Account name is required", variant: "destructive" });
       return;
     }
 
@@ -268,10 +282,11 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
                 type="button"
                 variant="destructive"
                 onClick={() => {
-                  if (confirm(`Are you sure you want to close "${account.name}"? This will move it to the Closed Accounts section.`)) {
-                    updateAccount(account.id, { isActive: false });
-                    setOpen(false);
-                  }
+                  setConfirmAction({
+                    title: "Close Account",
+                    description: `Are you sure you want to close "${account.name}"? This will move it to the Closed Accounts section.`,
+                    action: () => { updateAccount(account.id, { isActive: false }); setOpen(false); }
+                  });
                 }}
               >
                 Close Account
@@ -281,10 +296,11 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
                 type="button"
                 variant="default"
                 onClick={() => {
-                  if (confirm(`Are you sure you want to reopen "${account.name}"?`)) {
-                    updateAccount(account.id, { isActive: true });
-                    setOpen(false);
-                  }
+                  setConfirmAction({
+                    title: "Reopen Account",
+                    description: `Are you sure you want to reopen "${account.name}"?`,
+                    action: () => { updateAccount(account.id, { isActive: true }); setOpen(false); }
+                  });
                 }}
               >
                 Reopen Account
@@ -299,26 +315,49 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
     </DialogContent>
   );
 
+  const confirmDialog = (
+    <AlertDialog open={!!confirmAction} onOpenChange={(open) => !open && setConfirmAction(null)}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{confirmAction?.title}</AlertDialogTitle>
+          <AlertDialogDescription>{confirmAction?.description}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Cancel</AlertDialogCancel>
+          <AlertDialogAction onClick={() => { confirmAction?.action(); setConfirmAction(null); }}>
+            Confirm
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+
   // In controlled mode (editing), don't use DialogTrigger
   if (isControlled) {
     return (
-      <Dialog open={open} onOpenChange={setOpen}>
-        {dialogContent}
-      </Dialog>
+      <>
+        <Dialog open={open} onOpenChange={setOpen}>
+          {dialogContent}
+        </Dialog>
+        {confirmDialog}
+      </>
     );
   }
 
   // In uncontrolled mode (creating), use DialogTrigger
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>
-        {trigger || (
-          <button className="text-sidebar-foreground/50 hover:text-white transition-colors">
-            <PlusCircle className="w-3 h-3" />
-          </button>
-        )}
-      </DialogTrigger>
-      {dialogContent}
-    </Dialog>
+    <>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          {trigger || (
+            <button className="text-sidebar-foreground/50 hover:text-white transition-colors">
+              <PlusCircle className="w-3 h-3" />
+            </button>
+          )}
+        </DialogTrigger>
+        {dialogContent}
+      </Dialog>
+      {confirmDialog}
+    </>
   );
 }

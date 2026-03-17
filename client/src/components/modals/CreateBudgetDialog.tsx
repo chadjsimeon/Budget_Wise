@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/hooks/use-toast';
 
 interface CreateBudgetDialogProps {
   trigger?: React.ReactNode;
@@ -58,6 +59,7 @@ export function CreateBudgetDialog({ trigger, open: controlledOpen, onOpenChange
   const setOpen = isControlled ? onOpenChange! : setInternalOpen;
 
   const { addBudget } = useStore();
+  const { toast } = useToast();
 
   const [formData, setFormData] = useState<{
     name: string;
@@ -77,7 +79,7 @@ export function CreateBudgetDialog({ trigger, open: controlledOpen, onOpenChange
     e.preventDefault();
 
     if (!formData.name.trim()) {
-      alert('Please enter a plan name');
+      toast({ title: "Missing name", description: "Please enter a budget name", variant: "destructive" });
       return;
     }
 

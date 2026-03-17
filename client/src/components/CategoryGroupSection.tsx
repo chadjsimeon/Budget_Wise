@@ -112,17 +112,17 @@ export function CategoryGroupSection({
 
       {/* Subtotals when collapsed */}
       {!isExpanded && (
-        <div className="grid grid-cols-[1fr_140px_140px_140px_140px] gap-4 px-6 py-3 bg-slate-50 border-b border-slate-200">
+        <div className="grid grid-cols-[1fr_100px_100px] md:grid-cols-[1fr_140px_140px_140px_140px] gap-2 md:gap-4 px-4 md:px-6 py-3 bg-slate-50 border-b border-slate-200">
           <div className="text-sm font-medium text-slate-500 pl-6">
             Group Total ({categories.length} {categories.length === 1 ? 'category' : 'categories'})
           </div>
-          <div className="text-sm font-semibold text-slate-600 text-right">
+          <div className="text-sm font-semibold text-slate-600 text-right hidden md:block">
             {formatCurrency(groupSubtotals.goal)}
           </div>
           <div className="text-sm font-semibold text-slate-600 text-right">
             {formatCurrency(groupSubtotals.assigned)}
           </div>
-          <div className="text-sm font-semibold text-slate-600 text-right">
+          <div className="text-sm font-semibold text-slate-600 text-right hidden md:block">
             {formatCurrency(groupSubtotals.activity)}
           </div>
           <div className={cn(
@@ -196,7 +196,7 @@ function CategoryRow({
   return (
     <div
       ref={setNodeRef}
-      className="grid grid-cols-[1fr_140px_140px_140px_140px] gap-4 px-6 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 group"
+      className="grid grid-cols-[1fr_100px_100px] md:grid-cols-[1fr_140px_140px_140px_140px] gap-2 md:gap-4 px-4 md:px-6 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 group"
       style={{ opacity: isDragging ? 0.5 : 1, cursor: isDragging ? 'grabbing' : 'default' }}
     >
       {/* Category Name */}
@@ -230,7 +230,7 @@ function CategoryRow({
       </div>
 
       {/* Goal */}
-      <div className="flex items-center justify-end">
+      <div className="hidden md:flex items-center justify-end">
         <Input
           type="number"
           step="any"
@@ -266,7 +266,7 @@ function CategoryRow({
       </div>
 
       {/* Activity */}
-      <div className="flex items-center justify-end">
+      <div className="hidden md:flex items-center justify-end">
         <span className="text-sm font-medium text-slate-600">
           {formatCurrency(activity)}
         </span>
