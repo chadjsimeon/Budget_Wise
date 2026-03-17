@@ -2,12 +2,24 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { format } from 'date-fns';
 import { apiRequest } from '@/lib/queryClient';
+import { toast } from '@/hooks/use-toast';
+
+let syncErrorShown = false;
 
 async function syncToServer(method: string, url: string, data?: unknown) {
   try {
     await apiRequest(method, url, data);
+    syncErrorShown = false;
   } catch (err) {
     console.error(`[sync] ${method} ${url} failed:`, err);
+    if (!syncErrorShown) {
+      syncErrorShown = true;
+      toast({
+        title: "Sync failed",
+        description: "Your changes couldn't be saved to the server. Please check your connection.",
+        variant: "destructive",
+      });
+    }
   }
 }
 
@@ -190,6 +202,7 @@ interface AppState {
   // Auth
   _hasHydrated: boolean;
   hydrateFromServer: (data: ServerBudgetData) => void;
+  clearHydrated: () => void;
   clearState: () => void;
 }
 
@@ -957,6 +970,10 @@ export const useStore = create<AppState>()(
           })),
           _hasHydrated: true,
         });
+      },
+
+      clearHydrated: () => {
+        set({ _hasHydrated: false });
       },
 
       clearState: () => {

@@ -9,7 +9,13 @@ interface BudgetDataProviderProps {
 export function BudgetDataProvider({ children }: BudgetDataProviderProps) {
   const { data, isLoading, error } = useBudgetData();
   const hydrateFromServer = useStore((state) => state.hydrateFromServer);
+  const clearHydrated = useStore((state) => state.clearHydrated);
   const hasHydrated = useStore((state) => state._hasHydrated);
+
+  // Reset hydration flag on mount so fresh server data is always fetched
+  useEffect(() => {
+    clearHydrated();
+  }, [clearHydrated]);
 
   useEffect(() => {
     if (data && !hasHydrated) {

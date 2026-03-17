@@ -505,7 +505,7 @@ async function seed() {
 
   for (const { year, month } of months) {
     // Teaching salary (monthly, ~$4,200 net)
-    marcusTransactions.push({
+    sarahTransactions.push({
       date: formatDate(new Date(year, month, 1)),
       payee: "Lincoln Elementary School District",
       categoryName: null,
@@ -1255,7 +1255,7 @@ async function seed() {
   console.log("🌱 Database seeding complete!\n");
   console.log("Created users:");
   console.log("  1. marcus.johnson / marcus2024! (Lower Income)");
-  console.log("  2. sarah.chen / TeachKids2024! (Lower Middle Class)");
+  console.log("  2. sarah.chen /  (Lower Middle Class)");
   console.log("  3. david.thornton / Thornton$ecure1 (Upper Middle Class)");
   console.log("\nTime period: September 2025 - February 2026");
   console.log("=" .repeat(50));

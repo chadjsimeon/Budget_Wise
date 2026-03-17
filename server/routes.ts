@@ -99,7 +99,7 @@ export async function registerRoutes(
         currency: "TTD",
         currencyPlacement: "before",
         numberFormat: "1,234.56",
-        dateFormat: "DD/MM/YYYY",
+        dateFormat: "MM/DD/YYYY",
       });
 
       // Auto-login after registration

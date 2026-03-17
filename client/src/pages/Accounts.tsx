@@ -46,6 +46,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { LoanPayoffPlanner } from '@/components/LoanPayoffPlanner';
+import { useToast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -95,15 +96,27 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
+
   // If no account ID is selected, maybe redirect or show "All Accounts" (omitted for brevity, assume ID or show all)
   const currentAccount = accounts.find(a => a.id === accountId);
   const baseTransactions = accountId
     ? transactions.filter(t => t.accountId === accountId)
     : transactions;
 
-  // Sort transactions
+  // Filter and sort transactions
   const accountTransactions = React.useMemo(() => {
-    const sorted = [...baseTransactions];
+    let filtered = baseTransactions;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      filtered = baseTransactions.filter(t =>
+        t.payee.toLowerCase().includes(q) ||
+        (t.memo && t.memo.toLowerCase().includes(q)) ||
+        Math.abs(t.amount).toString().includes(q)
+      );
+    }
+    const sorted = [...filtered];
     sorted.sort((a, b) => {
       let compareResult = 0;
 
@@ -123,7 +136,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
     });
 
     return sorted;
-  }, [baseTransactions, sortField, sortDirection]);
+  }, [baseTransactions, sortField, sortDirection, searchQuery]);
 
   // New Transaction State
   const [isTxOpen, setIsTxOpen] = useState(false);
@@ -143,9 +156,12 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
     toAccountId: '' // For transfers only
   });
 
+  const { toast } = useToast();
+
   // Bulk Selection State
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
+  const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
   const [bulkEditData, setBulkEditData] = useState({
     categoryId: '',
     cleared: false
@@ -156,14 +172,14 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
 
     // Validate amount is entered and greater than 0
     if (!newTx.amount || isNaN(amount) || amount <= 0) {
-      alert('Please enter a valid amount greater than 0');
+      toast({ title: "Invalid amount", description: "Please enter a valid amount greater than 0", variant: "destructive" });
       return;
     }
 
     if (newTx.type === 'transfer') {
       // Handle transfer between accounts
       if (!newTx.accountId || !newTx.toAccountId) {
-        alert('Please select both From and To accounts for transfer');
+        toast({ title: "Missing accounts", description: "Please select both From and To accounts for transfer", variant: "destructive" });
         return;
       }
 
@@ -193,7 +209,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
       // Handle regular income/expense transaction
       const targetAccountId = newTx.accountId || currentAccount?.id;
       if (!targetAccountId) {
-        alert('Please select an account');
+        toast({ title: "Missing account", description: "Please select an account", variant: "destructive" });
         return;
       }
 
@@ -305,12 +321,15 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
 
   const handleBulkDelete = () => {
     if (selectedTxIds.size === 0) return;
-    if (confirm(`Delete ${selectedTxIds.size} selected transaction(s)?`)) {
-      selectedTxIds.forEach(txId => {
-        deleteTransaction(txId);
-      });
-      setSelectedTxIds(new Set());
-    }
+    setIsBulkDeleteOpen(true);
+  };
+
+  const confirmBulkDelete = () => {
+    selectedTxIds.forEach(txId => {
+      deleteTransaction(txId);
+    });
+    setSelectedTxIds(new Set());
+    setIsBulkDeleteOpen(false);
   };
 
   const handleBulkEdit = () => {
@@ -427,7 +446,20 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
         <div className="flex items-center gap-3">
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <Input className="pl-9 w-64 bg-white" placeholder="Search transactions..." />
+            <Input
+              className="pl-9 w-64 bg-white"
+              placeholder="Search transactions..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
           <Dialog open={isTxOpen} onOpenChange={setIsTxOpen}>
             <DialogTrigger asChild>
@@ -865,6 +897,24 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
         onOpenChange={setIsEditAccountOpen}
         onSuccess={() => setEditingAccount(null)}
       />
+
+      {/* Bulk Delete Confirmation Dialog */}
+      <AlertDialog open={isBulkDeleteOpen} onOpenChange={setIsBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Transactions</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete {selectedTxIds.size} selected transaction{selectedTxIds.size > 1 ? 's' : ''}? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmBulkDelete} className="bg-red-600 hover:bg-red-700">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -4,12 +4,12 @@ import { AppShell } from "@/components/layout/AppShell";
 import BudgetPage from "@/pages/Budget";
 import AccountsPage from "@/pages/Accounts";
 import ReportsPage from "@/pages/Reports";
-import AssetsPage from "@/pages/Assets";
 import NotFound from "@/pages/not-found";
 import { CreateAccountDialog } from "@/components/modals/CreateAccountDialog";
 import LoginPage from "@/pages/Login";
 import { useAuth } from "@/hooks/use-auth";
 import { BudgetDataProvider } from "@/components/providers/BudgetDataProvider";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
 function App() {
   const [location, setLocation] = useLocation();
@@ -60,6 +60,7 @@ function App() {
         {!isAuthenticated ? (
           <Redirect to="/login" />
         ) : (
+          <ErrorBoundary>
           <BudgetDataProvider>
           <AppShell>
             <Switch>
@@ -71,7 +72,7 @@ function App() {
                 <AccountsPage triggerNewTransaction={showTransactionShortcut} onTransactionTriggered={() => setShowTransactionShortcut(false)} />
               </Route>
               <Route path="/reports" component={ReportsPage} />
-              <Route path="/assets" component={AssetsPage} />
+              <Route path="/assets"><Redirect to="/" /></Route>
               {/* Fallback to 404 */}
               <Route component={NotFound} />
             </Switch>
@@ -83,6 +84,7 @@ function App() {
             />
           </AppShell>
           </BudgetDataProvider>
+          </ErrorBoundary>
         )}
       </Route>
     </Switch>

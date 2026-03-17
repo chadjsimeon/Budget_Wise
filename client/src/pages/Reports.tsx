@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { TrendingUp, TrendingDown, DollarSign, CreditCard, PiggyBank, TrendingUpIcon } from 'lucide-react';
 import { useCurrencyFormatter } from '@/lib/currency';
+import { cn } from '@/lib/utils';
 
 export default function ReportsPage() {
   const {
@@ -596,7 +597,7 @@ export default function ReportsPage() {
               <LineChart data={spendingTrends}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
                 <XAxis dataKey="month" />
-                <YAxis tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} />
+                <YAxis tickFormatter={(val) => formatCurrency(val)} />
                 <Tooltip
                   formatter={(value) => formatCurrency(Number(value))}
                   contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e2e8f0' }}
@@ -622,7 +623,7 @@ export default function ReportsPage() {
                 <LineChart data={forecastData}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="month" />
-                  <YAxis tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} />
+                  <YAxis tickFormatter={(val) => formatCurrency(val)} />
                   <Tooltip
                     formatter={(value) => value ? formatCurrency(Number(value)) : 'N/A'}
                     contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e2e8f0' }}
@@ -654,7 +655,7 @@ export default function ReportsPage() {
                 <LineChart data={categorySpendingOverTime}>
                   <CartesianGrid strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="month" />
-                  <YAxis tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} />
+                  <YAxis tickFormatter={(val) => formatCurrency(val)} />
                   <Tooltip
                     formatter={(value) => formatCurrency(Number(value))}
                     contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e2e8f0' }}
@@ -763,7 +764,7 @@ export default function ReportsPage() {
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={categoryGroupBudgetVsActual} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                  <XAxis type="number" tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} />
+                  <XAxis type="number" tickFormatter={(val) => formatCurrency(val)} />
                   <YAxis type="category" dataKey="name" width={100} />
                   <Tooltip
                     formatter={(value) => formatCurrency(Number(value))}
@@ -841,7 +842,7 @@ export default function ReportsPage() {
                 <BarChart data={categoryGroupSpendingTrend}>
                   <CartesianGrid strokeDasharray="3 3" horizontal={false} />
                   <XAxis dataKey="month" />
-                  <YAxis tickFormatter={(val) => `$${(val / 1000).toFixed(0)}k`} />
+                  <YAxis tickFormatter={(val) => formatCurrency(val)} />
                   <Tooltip
                     formatter={(value) => formatCurrency(Number(value))}
                     contentStyle={{ backgroundColor: 'rgba(255, 255, 255, 0.95)', border: '1px solid #e2e8f0' }}
@@ -869,9 +870,4 @@ export default function ReportsPage() {
       </div>
     </div>
   );
-}
-
-// Helper for cn (was missing import in previous file read, added it now)
-function cn(...classes: (string | undefined | null | false)[]) {
-  return classes.filter(Boolean).join(' ');
 }

@@ -1,5 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { AlertCircle } from "lucide-react";
+import { Link } from "wouter";
+import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
   return (
@@ -12,8 +14,12 @@ export default function NotFound() {
           </div>
 
           <p className="mt-4 text-sm text-gray-600">
-            Did you forget to add the page to the router?
+            The page you're looking for doesn't exist or may have been moved.
           </p>
+
+          <Link href="/">
+            <Button className="mt-6 w-full">Back to Budget</Button>
+          </Link>
         </CardContent>
       </Card>
     </div>
