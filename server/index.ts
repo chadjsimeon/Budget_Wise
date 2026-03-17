@@ -62,6 +62,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  try {
+  app.set("trust proxy", 1);
   setupAuth(app);
   await registerRoutes(httpServer, app);
 
@@ -95,4 +97,8 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
+  } catch (err) {
+    console.error("Failed to start server:", err);
+    process.exit(1);
+  }
 })();
