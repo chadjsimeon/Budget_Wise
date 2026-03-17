@@ -13,7 +13,7 @@ COPY shared/ shared/
 COPY script/ script/
 COPY vite.config.ts tsconfig.json vite-plugin-meta-images.ts ./
 COPY attached_assets/ attached_assets/
-RUN npm run build
+RUN npm run build && cp node_modules/connect-pg-simple/table.sql dist/table.sql
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
