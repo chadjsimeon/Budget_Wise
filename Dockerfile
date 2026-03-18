@@ -26,7 +26,6 @@ COPY drizzle.config.ts tsconfig.json package.json ./
 RUN npm install --no-save drizzle-kit@0.31.4 drizzle-orm@0.39.3 drizzle-zod@0.7.0 pg@8.16.3 tsx@4.20.5 zod@3.25.76
 
 ENV NODE_ENV=production
-ENV PORT=5050
 EXPOSE 5050
 
 CMD ["sh", "-c", "npx drizzle-kit push && node dist/index.cjs"]
