@@ -20,6 +20,7 @@ WORKDIR /app
 
 COPY --from=build /app/dist ./dist
 COPY shared/ shared/
+COPY migrations/ migrations/
 COPY drizzle.config.ts tsconfig.json package.json ./
 
 # Install only what drizzle-kit push needs (schema parsing + DB connection)
@@ -28,4 +29,5 @@ RUN npm install --no-save drizzle-kit@0.31.4 drizzle-orm@0.39.3 drizzle-zod@0.7.
 ENV NODE_ENV=production
 EXPOSE 5050
 
-CMD ["sh", "-c", "npx drizzle-kit push && node dist/index.cjs"]
+COPY script/start.sh ./script/start.sh
+CMD ["sh", "script/start.sh"]
