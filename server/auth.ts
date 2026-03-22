@@ -1,24 +1,17 @@
 import passport from "passport";
-import { Strategy as LocalStrategy } from "passport-local";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
-import { createHash } from "crypto";
 import type { Express } from "express";
 import { storage } from "./storage";
 import { pool } from "./db";
-import type { User } from "@shared/schema";
 
 declare global {
   namespace Express {
     interface User {
       id: string;
-      username: string;
+      email: string;
     }
   }
-}
-
-export function hashPassword(password: string): string {
-  return createHash("sha256").update(password).digest("hex");
 }
 
 export function setupAuth(app: Express) {
@@ -51,26 +44,6 @@ export function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  passport.use(
-    new LocalStrategy(async (username, password, done) => {
-      try {
-        const user = await storage.getUserByUsername(username);
-        if (!user) {
-          return done(null, false, { message: "Invalid username or password" });
-        }
-
-        const hashedPassword = hashPassword(password);
-        if (user.password !== hashedPassword) {
-          return done(null, false, { message: "Invalid username or password" });
-        }
-
-        return done(null, { id: user.id, username: user.username });
-      } catch (error) {
-        return done(error);
-      }
-    })
-  );
-
   passport.serializeUser((user, done) => {
     done(null, user.id);
   });
@@ -81,7 +54,7 @@ export function setupAuth(app: Express) {
       if (!user) {
         return done(null, false);
       }
-      done(null, { id: user.id, username: user.username });
+      done(null, { id: user.id, email: user.email });
     } catch (error) {
       done(error);
     }

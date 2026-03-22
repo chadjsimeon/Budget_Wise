@@ -1,8 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { hashPassword } from "./auth";
-import passport from "passport";
+import { sendOtpEmail } from "./email";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
@@ -45,17 +44,99 @@ export async function registerRoutes(
     res.json(req.user);
   });
 
-  app.post("/api/auth/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: any, info: any) => {
-      if (err) return next(err);
-      if (!user) {
-        return res.status(401).json({ message: info?.message || "Invalid credentials" });
+  app.post("/api/auth/request-otp", async (req, res, next) => {
+    try {
+      const { email } = req.body;
+
+      if (!email || typeof email !== "string") {
+        return res.status(400).json({ message: "Email is required" });
       }
-      req.logIn(user, (loginErr) => {
+
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        return res.status(400).json({ message: "Invalid email address" });
+      }
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      // Rate limit: max 5 OTPs per email per 15 minutes
+      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+      const recentCount = await storage.countRecentOtps(normalizedEmail, fifteenMinutesAgo);
+      if (recentCount >= 5) {
+        return res.status(429).json({ message: "Too many requests. Please try again later." });
+      }
+
+      // Invalidate any existing unused OTPs
+      await storage.invalidateOtpsForEmail(normalizedEmail);
+
+      // Generate 6-digit code
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+      await storage.createOtp({ email: normalizedEmail, code, expiresAt });
+      await sendOtpEmail(normalizedEmail, code);
+
+      res.json({ message: "Verification code sent" });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/auth/verify-otp", async (req, res, next) => {
+    try {
+      const { email, code } = req.body;
+
+      if (!email || !code) {
+        return res.status(400).json({ message: "Email and code are required" });
+      }
+
+      const normalizedEmail = email.toLowerCase().trim();
+
+      const otp = await storage.getValidOtp(normalizedEmail);
+      if (!otp) {
+        return res.status(401).json({ message: "Code expired or not found. Please request a new one." });
+      }
+
+      // Check max attempts (5)
+      const attempts = await storage.incrementOtpAttempts(otp.id);
+      if (attempts > 5) {
+        await storage.markOtpUsed(otp.id);
+        return res.status(401).json({ message: "Too many attempts. Please request a new code." });
+      }
+
+      if (otp.code !== code) {
+        return res.status(401).json({ message: "Invalid code. Please try again." });
+      }
+
+      // Mark OTP as used
+      await storage.markOtpUsed(otp.id);
+
+      // Find or create user
+      let user = await storage.getUserByEmail(normalizedEmail);
+      if (!user) {
+        user = await storage.createUser({ email: normalizedEmail });
+
+        // Create a default budget for new users
+        const budgetId = crypto.randomUUID();
+        await storage.createBudget({
+          id: budgetId,
+          userId: user.id,
+          name: "My Budget",
+          currency: "TTD",
+          currencyPlacement: "before",
+          numberFormat: "1,234.56",
+          dateFormat: "MM/DD/YYYY",
+        });
+      }
+
+      // Log the user in via passport session
+      req.logIn({ id: user.id, email: user.email }, (loginErr) => {
         if (loginErr) return next(loginErr);
-        res.json(user);
+        res.json({ id: user.id, email: user.email });
       });
-    })(req, res, next);
+    } catch (error) {
+      next(error);
+    }
   });
 
   app.post("/api/auth/logout", (req, res, next) => {
@@ -66,50 +147,6 @@ export async function registerRoutes(
         res.json({ message: "Logged out" });
       });
     });
-  });
-
-  app.post("/api/auth/register", async (req, res, next) => {
-    try {
-      const { username, password } = req.body;
-
-      if (!username || !password) {
-        return res.status(400).json({ message: "Username and password are required" });
-      }
-      if (username.length < 3) {
-        return res.status(400).json({ message: "Username must be at least 3 characters" });
-      }
-      if (password.length < 6) {
-        return res.status(400).json({ message: "Password must be at least 6 characters" });
-      }
-
-      const existing = await storage.getUserByUsername(username);
-      if (existing) {
-        return res.status(409).json({ message: "Username already taken" });
-      }
-
-      const hashedPassword = hashPassword(password);
-      const user = await storage.createUser({ username, password: hashedPassword });
-
-      // Create a default budget for the new user
-      const budgetId = crypto.randomUUID();
-      await storage.createBudget({
-        id: budgetId,
-        userId: user.id,
-        name: "My Budget",
-        currency: "TTD",
-        currencyPlacement: "before",
-        numberFormat: "1,234.56",
-        dateFormat: "MM/DD/YYYY",
-      });
-
-      // Auto-login after registration
-      req.logIn({ id: user.id, username: user.username }, (loginErr) => {
-        if (loginErr) return next(loginErr);
-        res.status(201).json({ id: user.id, username: user.username });
-      });
-    } catch (error) {
-      next(error);
-    }
   });
 
   // ============= BUDGET DATA (read) =============

@@ -57,9 +57,27 @@ export const users = pgTable("users", {
   id: varchar("id", { length: 36 })
     .primaryKey()
     .default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
-  password: text("password").notNull(),
+  email: text("email").notNull().unique(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// ============================================================================
+// OTP CODES TABLE
+// ============================================================================
+
+export const otpCodes = pgTable("otp_codes", {
+  id: varchar("id", { length: 36 })
+    .primaryKey()
+    .default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  code: varchar("code", { length: 6 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").notNull().default(false),
+  attempts: numeric("attempts").notNull().default('0'),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  emailUsedIdx: index("otp_codes_email_used_idx").on(table.email, table.used),
+}));
 
 // ============================================================================
 // GLOBAL TABLES (No Budget Scoping)
@@ -261,9 +279,16 @@ export const monthlyAssignmentsRelations = relations(monthlyAssignments, ({ one 
 // ZOD VALIDATION SCHEMAS
 // ============================================================================
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const insertUserSchema = createInsertSchema(users, {
+  email: z.string().email("Invalid email address"),
+}).pick({
+  email: true,
+});
+
+export const insertOtpSchema = createInsertSchema(otpCodes).pick({
+  email: true,
+  code: true,
+  expiresAt: true,
 });
 
 export const insertBudgetSchema = createInsertSchema(budgets, {
@@ -336,3 +361,5 @@ export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type InsertMonthlyAssignment = z.infer<typeof insertMonthlyAssignmentSchema>;
 export type InsertBudgetTemplate = z.infer<typeof insertBudgetTemplateSchema>;
 export type InsertAsset = z.infer<typeof insertAssetSchema>;
+export type OtpCode = typeof otpCodes.$inferSelect;
+export type InsertOtp = z.infer<typeof insertOtpSchema>;

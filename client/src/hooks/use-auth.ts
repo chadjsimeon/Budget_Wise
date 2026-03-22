@@ -4,12 +4,7 @@ import { useStore } from "@/lib/store";
 
 interface User {
   id: string;
-  username: string;
-}
-
-interface LoginCredentials {
-  username: string;
-  password: string;
+  email: string;
 }
 
 export function useAuth() {
@@ -22,19 +17,16 @@ export function useAuth() {
     retry: false,
   });
 
-  const loginMutation = useMutation({
-    mutationFn: async (credentials: LoginCredentials) => {
-      const res = await apiRequest("POST", "/api/auth/login", credentials);
-      return res.json() as Promise<User>;
-    },
-    onSuccess: (user) => {
-      queryClient.setQueryData(["/api/auth/user"], user);
+  const requestOtpMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await apiRequest("POST", "/api/auth/request-otp", { email });
+      return res.json() as Promise<{ message: string }>;
     },
   });
 
-  const registerMutation = useMutation({
-    mutationFn: async (credentials: LoginCredentials) => {
-      const res = await apiRequest("POST", "/api/auth/register", credentials);
+  const verifyOtpMutation = useMutation({
+    mutationFn: async ({ email, code }: { email: string; code: string }) => {
+      const res = await apiRequest("POST", "/api/auth/verify-otp", { email, code });
       return res.json() as Promise<User>;
     },
     onSuccess: (user) => {
@@ -47,10 +39,8 @@ export function useAuth() {
       await apiRequest("POST", "/api/auth/logout");
     },
     onSuccess: () => {
-      // Clear React Query cache for budget data
       queryClient.removeQueries({ queryKey: ["/api/budget-data"] });
       queryClient.setQueryData(["/api/auth/user"], null);
-      // Clear Zustand store (use getState to avoid hook issues)
       useStore.getState().clearState();
     },
   });
@@ -59,13 +49,13 @@ export function useAuth() {
     user,
     isLoading,
     isAuthenticated: !!user,
-    login: loginMutation.mutateAsync,
-    register: registerMutation.mutateAsync,
+    requestOtp: requestOtpMutation.mutateAsync,
+    verifyOtp: verifyOtpMutation.mutateAsync,
     logout: logoutMutation.mutateAsync,
-    loginError: loginMutation.error,
-    registerError: registerMutation.error,
-    isLoggingIn: loginMutation.isPending,
-    isRegistering: registerMutation.isPending,
+    requestOtpError: requestOtpMutation.error,
+    verifyOtpError: verifyOtpMutation.error,
+    isRequestingOtp: requestOtpMutation.isPending,
+    isVerifyingOtp: verifyOtpMutation.isPending,
     isLoggingOut: logoutMutation.isPending,
   };
 }

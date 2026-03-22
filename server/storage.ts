@@ -1,7 +1,9 @@
 import {
   type User,
   type InsertUser,
+  type OtpCode,
   users,
+  otpCodes,
   budgets,
   accounts,
   trackingAccounts,
@@ -11,14 +13,22 @@ import {
   monthlyAssignments,
   budgetTemplates,
 } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gt, desc } from "drizzle-orm";
 import { db } from "./db";
 
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
-  getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+
+  // OTP Codes
+  createOtp(data: { email: string; code: string; expiresAt: Date }): Promise<void>;
+  getValidOtp(email: string): Promise<OtpCode | undefined>;
+  markOtpUsed(id: string): Promise<void>;
+  incrementOtpAttempts(id: string): Promise<number>;
+  invalidateOtpsForEmail(email: string): Promise<void>;
+  countRecentOtps(email: string, since: Date): Promise<number>;
 
   // Budgets
   createBudget(data: {
@@ -131,14 +141,68 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async getUserByUsername(username: string): Promise<User | undefined> {
-    const result = await db.select().from(users).where(eq(users.username, username)).limit(1);
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const result = await db.select().from(users).where(eq(users.email, email)).limit(1);
     return result[0];
   }
 
   async createUser(insertUser: InsertUser): Promise<User> {
     const result = await db.insert(users).values(insertUser).returning();
     return result[0];
+  }
+
+  // ============= OTP CODES =============
+  async createOtp(data: { email: string; code: string; expiresAt: Date }): Promise<void> {
+    await db.insert(otpCodes).values({
+      email: data.email,
+      code: data.code,
+      expiresAt: data.expiresAt,
+    });
+  }
+
+  async getValidOtp(email: string): Promise<OtpCode | undefined> {
+    const result = await db.select().from(otpCodes)
+      .where(and(
+        eq(otpCodes.email, email),
+        eq(otpCodes.used, false),
+        gt(otpCodes.expiresAt, new Date()),
+      ))
+      .orderBy(desc(otpCodes.createdAt))
+      .limit(1);
+    return result[0];
+  }
+
+  async markOtpUsed(id: string): Promise<void> {
+    await db.update(otpCodes)
+      .set({ used: true })
+      .where(eq(otpCodes.id, id));
+  }
+
+  async incrementOtpAttempts(id: string): Promise<number> {
+    const result = await db.select({ attempts: otpCodes.attempts })
+      .from(otpCodes)
+      .where(eq(otpCodes.id, id));
+    const current = Number(result[0]?.attempts ?? 0);
+    const newCount = current + 1;
+    await db.update(otpCodes)
+      .set({ attempts: String(newCount) })
+      .where(eq(otpCodes.id, id));
+    return newCount;
+  }
+
+  async invalidateOtpsForEmail(email: string): Promise<void> {
+    await db.update(otpCodes)
+      .set({ used: true })
+      .where(and(eq(otpCodes.email, email), eq(otpCodes.used, false)));
+  }
+
+  async countRecentOtps(email: string, since: Date): Promise<number> {
+    const result = await db.select().from(otpCodes)
+      .where(and(
+        eq(otpCodes.email, email),
+        gt(otpCodes.createdAt, since),
+      ));
+    return result.length;
   }
 
   // ============= BUDGETS =============

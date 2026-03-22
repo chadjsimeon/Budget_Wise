@@ -2,7 +2,6 @@ import "dotenv/config";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import { randomUUID } from "crypto";
-import { createHash } from "crypto";
 import {
   users,
   budgets,
@@ -13,11 +12,6 @@ import {
   transactions,
   monthlyAssignments,
 } from "../shared/schema.js";
-
-// Simple password hashing (in production, use bcrypt or argon2)
-function hashPassword(password: string): string {
-  return createHash("sha256").update(password).digest("hex");
-}
 
 // Generate UUID
 function uuid(): string {
@@ -80,8 +74,7 @@ async function seed() {
   const marcusId = uuid();
   await db.insert(users).values({
     id: marcusId,
-    username: "marcus.johnson",
-    password: hashPassword("marcus2024!"),
+    email: "marcus.johnson@example.com",
   });
 
   const marcusBudgetId = uuid();
@@ -373,8 +366,7 @@ async function seed() {
   const sarahId = uuid();
   await db.insert(users).values({
     id: sarahId,
-    username: "sarah.chen",
-    password: hashPassword("TeachKids2024!"),
+    email: "sarah.chen@example.com",
   });
 
   const sarahBudgetId = uuid();
@@ -735,8 +727,7 @@ async function seed() {
   const davidId = uuid();
   await db.insert(users).values({
     id: davidId,
-    username: "david.thornton",
-    password: hashPassword("Thornton$ecure1"),
+    email: "david.thornton@example.com",
   });
 
   const davidBudgetId = uuid();
@@ -1253,10 +1244,10 @@ async function seed() {
   // Summary
   console.log("=" .repeat(50));
   console.log("🌱 Database seeding complete!\n");
-  console.log("Created users:");
-  console.log("  1. marcus.johnson / marcus2024! (Lower Income)");
-  console.log("  2. sarah.chen /  (Lower Middle Class)");
-  console.log("  3. david.thornton / Thornton$ecure1 (Upper Middle Class)");
+  console.log("Created users (sign in with email, OTP will be logged to console):");
+  console.log("  1. marcus.johnson@example.com (Lower Income)");
+  console.log("  2. sarah.chen@example.com (Lower Middle Class)");
+  console.log("  3. david.thornton@example.com (Upper Middle Class)");
   console.log("\nTime period: September 2025 - February 2026");
   console.log("=" .repeat(50));
 

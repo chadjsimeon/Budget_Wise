@@ -8,54 +8,56 @@ import { Label } from "@/components/ui/label";
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
-  const { login, register, isLoggingIn, isRegistering } = useAuth();
-  const [isRegisterMode, setIsRegisterMode] = useState(false);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const { requestOtp, verifyOtp, isRequestingOtp, isVerifyingOtp } = useAuth();
+  const [step, setStep] = useState<"email" | "otp">("email");
+  const [email, setEmail] = useState("");
+  const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const parseError = (err: any): string => {
+    const message = err?.message || "Something went wrong";
+    try {
+      const jsonMatch = message.match(/\d+:\s*(.+)/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[1]);
+        return parsed.message || jsonMatch[1];
+      }
+    } catch {
+      const match = message.match(/\d+:\s*(.+)/);
+      if (match) return match[1];
+    }
+    return message;
+  };
+
+  const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    if (isRegisterMode && password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-
     try {
-      if (isRegisterMode) {
-        await register({ username, password });
-      } else {
-        await login({ username, password });
-      }
+      await requestOtp(email);
+      setStep("otp");
+    } catch (err: any) {
+      setError(parseError(err));
+    }
+  };
+
+  const handleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    try {
+      await verifyOtp({ email, code });
       setLocation("/");
     } catch (err: any) {
-      const message = err?.message || "Something went wrong";
-      // Extract error message from API response JSON
-      try {
-        const jsonMatch = message.match(/\d+:\s*(.+)/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[1]);
-          setError(parsed.message || jsonMatch[1]);
-        } else {
-          setError(message);
-        }
-      } catch {
-        const match = message.match(/\d+:\s*(.+)/);
-        setError(match ? match[1] : message);
-      }
+      setError(parseError(err));
     }
   };
 
-  const switchMode = () => {
-    setIsRegisterMode(!isRegisterMode);
+  const handleBack = () => {
+    setStep("email");
+    setCode("");
     setError(null);
-    setConfirmPassword("");
   };
 
-  const isSubmitting = isLoggingIn || isRegistering;
+  const isSubmitting = isRequestingOtp || isVerifyingOtp;
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-4">
@@ -72,86 +74,73 @@ export default function LoginPage() {
           </div>
           <CardTitle className="text-2xl">Budget Wise</CardTitle>
           <CardDescription>
-            {isRegisterMode ? "Create an account to get started" : "Sign in to manage your budget"}
+            {step === "email"
+              ? "Enter your email to sign in or create an account"
+              : `Enter the code sent to ${email}`}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter your username"
-                required
-                autoComplete="username"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Enter your password"
-                required
-                autoComplete={isRegisterMode ? "new-password" : "current-password"}
-              />
-            </div>
-            {isRegisterMode && (
+          {step === "email" ? (
+            <form onSubmit={handleRequestOtp} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm your password"
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
                   required
-                  autoComplete="new-password"
+                  autoComplete="email"
+                  autoFocus
                 />
               </div>
-            )}
-            {error && (
-              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
-                {error}
+              {error && (
+                <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+                  {error}
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={isSubmitting}>
+                {isRequestingOtp ? "Sending code..." : "Continue"}
+              </Button>
+            </form>
+          ) : (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="otp-code">Verification Code</Label>
+                <Input
+                  id="otp-code"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]{6}"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))}
+                  placeholder="123456"
+                  required
+                  autoComplete="one-time-code"
+                  autoFocus
+                />
               </div>
-            )}
-            <Button type="submit" className="w-full" disabled={isSubmitting}>
-              {isSubmitting
-                ? (isRegisterMode ? "Creating account..." : "Signing in...")
-                : (isRegisterMode ? "Create Account" : "Sign In")
-              }
-            </Button>
-          </form>
-          <div className="mt-4 text-center text-sm text-muted-foreground">
-            {isRegisterMode ? (
-              <>
-                Already have an account?{" "}
+              {error && (
+                <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+                  {error}
+                </div>
+              )}
+              <Button type="submit" className="w-full" disabled={isSubmitting || code.length !== 6}>
+                {isVerifyingOtp ? "Verifying..." : "Sign In"}
+              </Button>
+              <div className="text-center text-sm text-muted-foreground">
                 <button
                   type="button"
-                  onClick={switchMode}
+                  onClick={handleBack}
                   className="text-primary underline-offset-4 hover:underline"
                 >
-                  Sign in
+                  Use a different email
                 </button>
-              </>
-            ) : (
-              <>
-                Don't have an account?{" "}
-                <button
-                  type="button"
-                  onClick={switchMode}
-                  className="text-primary underline-offset-4 hover:underline"
-                >
-                  Create one
-                </button>
-              </>
-            )}
-          </div>
+              </div>
+            </form>
+          )}
         </CardContent>
       </Card>
     </div>
