@@ -7,6 +7,7 @@ import ReportsPage from "@/pages/Reports";
 import NotFound from "@/pages/not-found";
 import { CreateAccountDialog } from "@/components/modals/CreateAccountDialog";
 import LoginPage from "@/pages/Login";
+import ResetPasswordPage from "@/pages/ResetPassword";
 import { useAuth } from "@/hooks/use-auth";
 import { BudgetDataProvider } from "@/components/providers/BudgetDataProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -55,6 +56,9 @@ function App() {
     <Switch>
       <Route path="/login">
         {isAuthenticated ? <Redirect to="/" /> : <LoginPage />}
+      </Route>
+      <Route path="/reset-password">
+        <ResetPasswordPage />
       </Route>
       <Route>
         {!isAuthenticated ? (

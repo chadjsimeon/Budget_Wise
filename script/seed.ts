@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { randomUUID } from "crypto";
+import { randomUUID, createHash } from "crypto";
 import {
   users,
   budgets,
@@ -13,7 +13,10 @@ import {
   monthlyAssignments,
 } from "../shared/schema.js";
 
-// Generate UUID
+function hashPassword(password: string): string {
+  return createHash("sha256").update(password).digest("hex");
+}
+
 function uuid(): string {
   return randomUUID();
 }
@@ -75,6 +78,7 @@ async function seed() {
   await db.insert(users).values({
     id: marcusId,
     email: "marcus.johnson@example.com",
+    password: hashPassword("marcus2024!"),
   });
 
   const marcusBudgetId = uuid();
@@ -367,6 +371,7 @@ async function seed() {
   await db.insert(users).values({
     id: sarahId,
     email: "sarah.chen@example.com",
+    password: hashPassword("sarah2024!"),
   });
 
   const sarahBudgetId = uuid();
@@ -728,6 +733,7 @@ async function seed() {
   await db.insert(users).values({
     id: davidId,
     email: "david.thornton@example.com",
+    password: hashPassword("david2024!"),
   });
 
   const davidBudgetId = uuid();
@@ -1244,10 +1250,10 @@ async function seed() {
   // Summary
   console.log("=" .repeat(50));
   console.log("🌱 Database seeding complete!\n");
-  console.log("Created users (sign in with email, OTP will be logged to console):");
-  console.log("  1. marcus.johnson@example.com (Lower Income)");
-  console.log("  2. sarah.chen@example.com (Lower Middle Class)");
-  console.log("  3. david.thornton@example.com (Upper Middle Class)");
+  console.log("Created users:");
+  console.log("  1. marcus.johnson@example.com / marcus2024! (Lower Income)");
+  console.log("  2. sarah.chen@example.com / sarah2024! (Lower Middle Class)");
+  console.log("  3. david.thornton@example.com / david2024! (Upper Middle Class)");
   console.log("\nTime period: September 2025 - February 2026");
   console.log("=" .repeat(50));
 

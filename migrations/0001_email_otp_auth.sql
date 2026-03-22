@@ -1,8 +1,7 @@
--- Migration: Drop all app tables so drizzle-kit push can recreate them
--- from the current schema definition (email OTP auth, no username/password).
+-- Migration: Clean slate for email+password auth
+-- Drops all app tables and enums so drizzle-kit push recreates from current schema.
 -- Idempotent — safe to run multiple times.
 
--- Drop all enums' dependent tables first, then enums
 DROP TABLE IF EXISTS otp_codes CASCADE;
 DROP TABLE IF EXISTS monthly_assignments CASCADE;
 DROP TABLE IF EXISTS transactions CASCADE;
@@ -15,7 +14,6 @@ DROP TABLE IF EXISTS assets CASCADE;
 DROP TABLE IF EXISTS budgets CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 
--- Drop enums so drizzle-kit push can recreate them cleanly
 DROP TYPE IF EXISTS account_type CASCADE;
 DROP TYPE IF EXISTS tracking_account_type CASCADE;
 DROP TYPE IF EXISTS currency_placement CASCADE;

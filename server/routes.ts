@@ -1,7 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { sendOtpEmail } from "./email";
+import { hashPassword, generateResetToken } from "./auth";
+import { sendPasswordResetEmail } from "./email";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
@@ -49,96 +50,119 @@ export async function registerRoutes(
     res.json(req.user);
   });
 
-  app.post("/api/auth/request-otp", async (req, res, next) => {
+  app.post("/api/auth/register", async (req, res, next) => {
     try {
-      const { email } = req.body;
+      const { email, password } = req.body;
 
-      if (!email || typeof email !== "string") {
-        return res.status(400).json({ message: "Email is required" });
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
       }
 
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(email)) {
         return res.status(400).json({ message: "Invalid email address" });
       }
-
-      const normalizedEmail = email.toLowerCase().trim();
-
-      // Rate limit: max 5 OTPs per email per 15 minutes
-      const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
-      const recentCount = await storage.countRecentOtps(normalizedEmail, fifteenMinutesAgo);
-      if (recentCount >= 5) {
-        return res.status(429).json({ message: "Too many requests. Please try again later." });
+      if (password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
       }
 
-      // Invalidate any existing unused OTPs
-      await storage.invalidateOtpsForEmail(normalizedEmail);
+      const normalizedEmail = email.toLowerCase().trim();
+      const existing = await storage.getUserByEmail(normalizedEmail);
+      if (existing) {
+        return res.status(409).json({ message: "An account with this email already exists" });
+      }
 
-      // Generate 6-digit code
-      const code = String(Math.floor(100000 + Math.random() * 900000));
-      const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+      const user = await storage.createUser({
+        email: normalizedEmail,
+        password: hashPassword(password),
+      });
 
-      await storage.createOtp({ email: normalizedEmail, code, expiresAt });
-      await sendOtpEmail(normalizedEmail, code);
+      // Create a default budget for new users
+      const budgetId = crypto.randomUUID();
+      await storage.createBudget({
+        id: budgetId,
+        userId: user.id,
+        name: "My Budget",
+        currency: "TTD",
+        currencyPlacement: "before",
+        numberFormat: "1,234.56",
+        dateFormat: "MM/DD/YYYY",
+      });
 
-      res.json({ message: "Verification code sent" });
+      req.logIn({ id: user.id, email: user.email }, (loginErr) => {
+        if (loginErr) return next(loginErr);
+        res.status(201).json({ id: user.id, email: user.email });
+      });
     } catch (error) {
       next(error);
     }
   });
 
-  app.post("/api/auth/verify-otp", async (req, res, next) => {
+  app.post("/api/auth/login", async (req, res, next) => {
     try {
-      const { email, code } = req.body;
+      const { email, password } = req.body;
 
-      if (!email || !code) {
-        return res.status(400).json({ message: "Email and code are required" });
+      if (!email || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
       }
 
       const normalizedEmail = email.toLowerCase().trim();
-
-      const otp = await storage.getValidOtp(normalizedEmail);
-      if (!otp) {
-        return res.status(401).json({ message: "Code expired or not found. Please request a new one." });
+      const user = await storage.getUserByEmail(normalizedEmail);
+      if (!user || user.password !== hashPassword(password)) {
+        return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      // Check max attempts (5)
-      const attempts = await storage.incrementOtpAttempts(otp.id);
-      if (attempts > 5) {
-        await storage.markOtpUsed(otp.id);
-        return res.status(401).json({ message: "Too many attempts. Please request a new code." });
-      }
-
-      if (otp.code !== code) {
-        return res.status(401).json({ message: "Invalid code. Please try again." });
-      }
-
-      // Mark OTP as used
-      await storage.markOtpUsed(otp.id);
-
-      // Find or create user
-      let user = await storage.getUserByEmail(normalizedEmail);
-      if (!user) {
-        user = await storage.createUser({ email: normalizedEmail });
-
-        // Create a default budget for new users
-        const budgetId = crypto.randomUUID();
-        await storage.createBudget({
-          id: budgetId,
-          userId: user.id,
-          name: "My Budget",
-          currency: "TTD",
-          currencyPlacement: "before",
-          numberFormat: "1,234.56",
-          dateFormat: "MM/DD/YYYY",
-        });
-      }
-
-      // Log the user in via passport session
       req.logIn({ id: user.id, email: user.email }, (loginErr) => {
         if (loginErr) return next(loginErr);
         res.json({ id: user.id, email: user.email });
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/auth/forgot-password", async (req, res, next) => {
+    try {
+      const { email } = req.body;
+      if (!email) {
+        return res.status(400).json({ message: "Email is required" });
+      }
+
+      const normalizedEmail = email.toLowerCase().trim();
+      const token = generateResetToken();
+      const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      // Always return success to avoid email enumeration
+      await storage.setResetToken(normalizedEmail, token, expiresAt);
+
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+      await sendPasswordResetEmail(normalizedEmail, resetUrl);
+
+      res.json({ message: "If an account exists with that email, a reset link has been sent." });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res, next) => {
+    try {
+      const { token, password } = req.body;
+
+      if (!token || !password) {
+        return res.status(400).json({ message: "Token and password are required" });
+      }
+      if (password.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+
+      const user = await storage.getUserByResetToken(token);
+      if (!user) {
+        return res.status(400).json({ message: "Invalid or expired reset link" });
+      }
+
+      await storage.updatePassword(user.id, hashPassword(password));
+      res.json({ message: "Password has been reset. You can now sign in." });
     } catch (error) {
       next(error);
     }

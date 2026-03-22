@@ -1,9 +1,7 @@
 import {
   type User,
   type InsertUser,
-  type OtpCode,
   users,
-  otpCodes,
   budgets,
   accounts,
   trackingAccounts,
@@ -13,7 +11,7 @@ import {
   monthlyAssignments,
   budgetTemplates,
 } from "@shared/schema";
-import { eq, and, gt, desc } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import { db } from "./db";
 
 export interface IStorage {
@@ -21,14 +19,9 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-
-  // OTP Codes
-  createOtp(data: { email: string; code: string; expiresAt: Date }): Promise<void>;
-  getValidOtp(email: string): Promise<OtpCode | undefined>;
-  markOtpUsed(id: string): Promise<void>;
-  incrementOtpAttempts(id: string): Promise<number>;
-  invalidateOtpsForEmail(email: string): Promise<void>;
-  countRecentOtps(email: string, since: Date): Promise<number>;
+  setResetToken(email: string, token: string, expiresAt: Date): Promise<boolean>;
+  getUserByResetToken(token: string): Promise<User | undefined>;
+  updatePassword(userId: string, hashedPassword: string): Promise<void>;
 
   // Budgets
   createBudget(data: {
@@ -151,58 +144,28 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  // ============= OTP CODES =============
-  async createOtp(data: { email: string; code: string; expiresAt: Date }): Promise<void> {
-    await db.insert(otpCodes).values({
-      email: data.email,
-      code: data.code,
-      expiresAt: data.expiresAt,
-    });
+  async setResetToken(email: string, token: string, expiresAt: Date): Promise<boolean> {
+    const result = await db.update(users)
+      .set({ resetToken: token, resetTokenExpiresAt: expiresAt })
+      .where(eq(users.email, email))
+      .returning({ id: users.id });
+    return result.length > 0;
   }
 
-  async getValidOtp(email: string): Promise<OtpCode | undefined> {
-    const result = await db.select().from(otpCodes)
+  async getUserByResetToken(token: string): Promise<User | undefined> {
+    const result = await db.select().from(users)
       .where(and(
-        eq(otpCodes.email, email),
-        eq(otpCodes.used, false),
-        gt(otpCodes.expiresAt, new Date()),
+        eq(users.resetToken, token),
+        gt(users.resetTokenExpiresAt, new Date()),
       ))
-      .orderBy(desc(otpCodes.createdAt))
       .limit(1);
     return result[0];
   }
 
-  async markOtpUsed(id: string): Promise<void> {
-    await db.update(otpCodes)
-      .set({ used: true })
-      .where(eq(otpCodes.id, id));
-  }
-
-  async incrementOtpAttempts(id: string): Promise<number> {
-    const result = await db.select({ attempts: otpCodes.attempts })
-      .from(otpCodes)
-      .where(eq(otpCodes.id, id));
-    const current = Number(result[0]?.attempts ?? 0);
-    const newCount = current + 1;
-    await db.update(otpCodes)
-      .set({ attempts: String(newCount) })
-      .where(eq(otpCodes.id, id));
-    return newCount;
-  }
-
-  async invalidateOtpsForEmail(email: string): Promise<void> {
-    await db.update(otpCodes)
-      .set({ used: true })
-      .where(and(eq(otpCodes.email, email), eq(otpCodes.used, false)));
-  }
-
-  async countRecentOtps(email: string, since: Date): Promise<number> {
-    const result = await db.select().from(otpCodes)
-      .where(and(
-        eq(otpCodes.email, email),
-        gt(otpCodes.createdAt, since),
-      ));
-    return result.length;
+  async updatePassword(userId: string, hashedPassword: string): Promise<void> {
+    await db.update(users)
+      .set({ password: hashedPassword, resetToken: null, resetTokenExpiresAt: null })
+      .where(eq(users.id, userId));
   }
 
   // ============= BUDGETS =============

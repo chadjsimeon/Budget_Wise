@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from "crypto";
 import passport from "passport";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
@@ -12,6 +13,14 @@ declare global {
       email: string;
     }
   }
+}
+
+export function hashPassword(password: string): string {
+  return createHash("sha256").update(password).digest("hex");
+}
+
+export function generateResetToken(): string {
+  return randomBytes(32).toString("hex");
 }
 
 export function setupAuth(app: Express) {

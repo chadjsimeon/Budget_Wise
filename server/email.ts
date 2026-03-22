@@ -15,28 +15,28 @@ const transporter = process.env.SMTP_HOST
 const fromAddress =
   process.env.EMAIL_FROM || '"Budget Wise" <noreply@budgetwise.app>';
 
-export async function sendOtpEmail(
+export async function sendPasswordResetEmail(
   to: string,
-  code: string
+  resetUrl: string
 ): Promise<void> {
   if (!transporter) {
-    console.log(`[DEV] OTP for ${to}: ${code}`);
+    console.log(`[DEV] Password reset link for ${to}: ${resetUrl}`);
     return;
   }
 
   await transporter.sendMail({
     from: fromAddress,
     to,
-    subject: "Your Budget Wise login code",
-    text: `Your verification code is: ${code}\n\nThis code expires in 10 minutes.\n\nIf you didn't request this, you can safely ignore this email.`,
+    subject: "Reset your Budget Wise password",
+    text: `You requested a password reset.\n\nClick the link below to reset your password:\n${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, you can safely ignore this email.`,
     html: `
       <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #333;">Budget Wise</h2>
-        <p>Your verification code is:</p>
-        <div style="font-size: 32px; font-weight: bold; letter-spacing: 8px; text-align: center; padding: 20px; background: #f4f4f4; border-radius: 8px; margin: 16px 0;">
-          ${code}
-        </div>
-        <p style="color: #666; font-size: 14px;">This code expires in 10 minutes.</p>
+        <p>You requested a password reset.</p>
+        <a href="${resetUrl}" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 6px; margin: 16px 0;">
+          Reset Password
+        </a>
+        <p style="color: #666; font-size: 14px;">This link expires in 1 hour.</p>
         <p style="color: #999; font-size: 12px;">If you didn't request this, you can safely ignore this email.</p>
       </div>
     `,

@@ -7,6 +7,11 @@ interface User {
   email: string;
 }
 
+interface Credentials {
+  email: string;
+  password: string;
+}
+
 export function useAuth() {
   const queryClient = useQueryClient();
 
@@ -17,20 +22,37 @@ export function useAuth() {
     retry: false,
   });
 
-  const requestOtpMutation = useMutation({
-    mutationFn: async (email: string) => {
-      const res = await apiRequest("POST", "/api/auth/request-otp", { email });
-      return res.json() as Promise<{ message: string }>;
-    },
-  });
-
-  const verifyOtpMutation = useMutation({
-    mutationFn: async ({ email, code }: { email: string; code: string }) => {
-      const res = await apiRequest("POST", "/api/auth/verify-otp", { email, code });
+  const loginMutation = useMutation({
+    mutationFn: async (credentials: Credentials) => {
+      const res = await apiRequest("POST", "/api/auth/login", credentials);
       return res.json() as Promise<User>;
     },
     onSuccess: (user) => {
       queryClient.setQueryData(["/api/auth/user"], user);
+    },
+  });
+
+  const registerMutation = useMutation({
+    mutationFn: async (credentials: Credentials) => {
+      const res = await apiRequest("POST", "/api/auth/register", credentials);
+      return res.json() as Promise<User>;
+    },
+    onSuccess: (user) => {
+      queryClient.setQueryData(["/api/auth/user"], user);
+    },
+  });
+
+  const forgotPasswordMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const res = await apiRequest("POST", "/api/auth/forgot-password", { email });
+      return res.json() as Promise<{ message: string }>;
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async ({ token, password }: { token: string; password: string }) => {
+      const res = await apiRequest("POST", "/api/auth/reset-password", { token, password });
+      return res.json() as Promise<{ message: string }>;
     },
   });
 
@@ -49,13 +71,17 @@ export function useAuth() {
     user,
     isLoading,
     isAuthenticated: !!user,
-    requestOtp: requestOtpMutation.mutateAsync,
-    verifyOtp: verifyOtpMutation.mutateAsync,
+    login: loginMutation.mutateAsync,
+    register: registerMutation.mutateAsync,
+    forgotPassword: forgotPasswordMutation.mutateAsync,
+    resetPassword: resetPasswordMutation.mutateAsync,
     logout: logoutMutation.mutateAsync,
-    requestOtpError: requestOtpMutation.error,
-    verifyOtpError: verifyOtpMutation.error,
-    isRequestingOtp: requestOtpMutation.isPending,
-    isVerifyingOtp: verifyOtpMutation.isPending,
+    loginError: loginMutation.error,
+    registerError: registerMutation.error,
+    isLoggingIn: loginMutation.isPending,
+    isRegistering: registerMutation.isPending,
+    isSendingReset: forgotPasswordMutation.isPending,
+    isResettingPassword: resetPasswordMutation.isPending,
     isLoggingOut: logoutMutation.isPending,
   };
 }
