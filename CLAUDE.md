@@ -142,7 +142,6 @@ The application supports **multiple budgets** with budget-scoped data:
 - Development: Vite dev server runs on port 5000, proxied through Express
 - Production: Express serves static built files from `dist/public/`
 - Always use port from `process.env.PORT` (defaults to 5000)
-- The application is configured for Replit deployment (optional Replit plugins in vite.config.ts)
 
 ### Database (Prepared but Not Active)
 
