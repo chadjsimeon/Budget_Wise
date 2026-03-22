@@ -3,15 +3,24 @@ set -e
 
 echo "Running SQL migrations..."
 for f in migrations/*.sql; do
+  [ -f "$f" ] || continue
   echo "  Applying $f..."
   node -e "
     const { Pool } = require('pg');
     const fs = require('fs');
-    const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-    const sql = fs.readFileSync('$f', 'utf8');
-    pool.query(sql)
-      .then(() => { console.log('  Applied $f'); pool.end(); })
-      .catch(e => { console.log('  Skipped $f:', e.message); pool.end(); });
+    async function run() {
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      try {
+        const sql = fs.readFileSync('$f', 'utf8');
+        await pool.query(sql);
+        console.log('  Applied $f');
+      } catch (e) {
+        console.log('  Skipped $f:', e.message);
+      } finally {
+        await pool.end();
+      }
+    }
+    run().then(() => process.exit(0)).catch(() => process.exit(1));
   "
 done
 
