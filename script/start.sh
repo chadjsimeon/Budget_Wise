@@ -1,5 +1,4 @@
 #!/bin/sh
-set -e
 
 echo "Running SQL migrations..."
 for f in migrations/*.sql; do
@@ -25,7 +24,7 @@ for f in migrations/*.sql; do
 done
 
 echo "Running drizzle-kit push..."
-npx drizzle-kit push
+npx drizzle-kit push --force || echo "drizzle-kit push failed, continuing anyway..."
 
 echo "Starting server..."
-node dist/index.cjs
+exec node dist/index.cjs
