@@ -1,24 +1,20 @@
 -- Migration: Replace username/password auth with email OTP
+-- Wipes existing user data and rebuilds the users table cleanly.
 -- Idempotent — safe to run multiple times.
 
--- Step 1: Add email column if missing
+-- Step 1: Drop all user-dependent data (cascades handle budget data)
+TRUNCATE TABLE users CASCADE;
+
+-- Step 2: Drop old columns if they exist
+ALTER TABLE users DROP COLUMN IF EXISTS username;
+ALTER TABLE users DROP COLUMN IF EXISTS password;
+
+-- Step 3: Add new columns
 ALTER TABLE users ADD COLUMN IF NOT EXISTS email text;
-
--- Step 2: Migrate existing usernames to email placeholder
-UPDATE users SET email = username || '@migrated.local'
-  WHERE email IS NULL
-  AND EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'users' AND column_name = 'username'
-  );
-
--- Step 3: Default any remaining NULLs (safety net)
-UPDATE users SET email = id || '@migrated.local' WHERE email IS NULL;
-
--- Step 4: Make email NOT NULL
 ALTER TABLE users ALTER COLUMN email SET NOT NULL;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at timestamp NOT NULL DEFAULT now();
 
--- Step 5: Add unique constraint on email if not exists
+-- Step 4: Add unique constraint on email if not exists
 DO $$
 BEGIN
   IF NOT EXISTS (
@@ -28,29 +24,7 @@ BEGIN
   END IF;
 END $$;
 
--- Step 6: Add created_at column
-ALTER TABLE users ADD COLUMN IF NOT EXISTS created_at timestamp NOT NULL DEFAULT now();
-
--- Step 7: Drop username unique constraint then column
-DO $$
-BEGIN
-  IF EXISTS (
-    SELECT 1 FROM information_schema.columns
-    WHERE table_name = 'users' AND column_name = 'username'
-  ) THEN
-    -- Try to drop unique constraint (name may vary)
-    BEGIN
-      ALTER TABLE users DROP CONSTRAINT IF EXISTS users_username_unique;
-    EXCEPTION WHEN undefined_object THEN NULL;
-    END;
-    ALTER TABLE users DROP COLUMN username;
-  END IF;
-END $$;
-
--- Step 8: Drop password column
-ALTER TABLE users DROP COLUMN IF EXISTS password;
-
--- Step 9: Create otp_codes table
+-- Step 5: Create otp_codes table
 CREATE TABLE IF NOT EXISTS otp_codes (
   id varchar(36) PRIMARY KEY DEFAULT gen_random_uuid(),
   email text NOT NULL,
