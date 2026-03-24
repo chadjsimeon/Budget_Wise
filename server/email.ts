@@ -1,34 +1,25 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 
-const transporter = process.env.SMTP_HOST
-  ? nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: Number(process.env.SMTP_PORT) === 465,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    })
+const resend = process.env.RESEND_API_KEY
+  ? new Resend(process.env.RESEND_API_KEY)
   : null;
 
 const fromAddress =
-  process.env.EMAIL_FROM || '"Budget Wise" <noreply@budgetwise.app>';
+  process.env.EMAIL_FROM || "Budget Wise <onboarding@resend.dev>";
 
 export async function sendPasswordResetEmail(
   to: string,
   resetUrl: string
 ): Promise<void> {
-  if (!transporter) {
+  if (!resend) {
     console.log(`[DEV] Password reset link for ${to}: ${resetUrl}`);
     return;
   }
 
-  await transporter.sendMail({
+  await resend.emails.send({
     from: fromAddress,
     to,
     subject: "Reset your Budget Wise password",
-    text: `You requested a password reset.\n\nClick the link below to reset your password:\n${resetUrl}\n\nThis link expires in 1 hour.\n\nIf you didn't request this, you can safely ignore this email.`,
     html: `
       <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto; padding: 20px;">
         <h2 style="color: #333;">Budget Wise</h2>
