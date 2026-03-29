@@ -47,7 +47,6 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
 
   const addAccount = useStore(state => state.addAccount);
   const updateAccount = useStore(state => state.updateAccount);
-  const addTransaction = useStore(state => state.addTransaction);
 
   // Determine if we're in edit mode
   const isEditMode = !!account;
@@ -125,22 +124,16 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
           loanStartDate: format(new Date(), 'yyyy-MM-dd')
         })
       };
-      const createdAccount = addAccount(newAccount);
+      // Pass the opening balance directly to addAccount so the account and
+      // its opening balance transaction are sent to the server in one request,
+      // preventing the FK race condition from two separate fire-and-forget calls.
+      const openingAmount = balanceAmount !== 0
+        ? (formData.type === 'loan' || formData.type === 'credit')
+          ? -Math.abs(balanceAmount)
+          : balanceAmount
+        : undefined;
 
-      // Create opening balance transaction if balance is not zero
-      if (balanceAmount !== 0) {
-        addTransaction({
-          accountId: createdAccount.id,
-          date: format(new Date(), 'yyyy-MM-dd'),
-          payee: 'Opening Balance',
-          amount: (formData.type === 'loan' || formData.type === 'credit')
-            ? -Math.abs(balanceAmount)
-            : balanceAmount,
-          memo: `Initial balance for ${formData.name}`,
-          cleared: true,
-          isOpeningBalance: true
-        });
-      }
+      addAccount(newAccount, openingAmount);
     }
 
     setOpen(false);

@@ -153,7 +153,7 @@ interface AppState {
   setMonth: (month: string) => void;
 
   // Account Actions (Budget-specific)
-  addAccount: (account: Omit<Account, 'id' | 'budgetId'>) => Account;
+  addAccount: (account: Omit<Account, 'id' | 'budgetId'>, openingBalance?: number) => Account;
   updateAccount: (id: string, updates: Partial<Account>) => void;
   deleteAccount: (id: string) => void;
 
@@ -372,7 +372,7 @@ export const useStore = create<AppState>()(
       setMonth: (month) => set({ currentMonth: month }),
 
       // ============= ACCOUNTS =============
-      addAccount: (account) => {
+      addAccount: (account, openingBalance) => {
         const currentBudgetId = get().currentBudgetId;
         const newAccount = {
           ...account,
@@ -383,6 +383,26 @@ export const useStore = create<AppState>()(
 
         let newGroup: CategoryGroup | undefined;
         let newCategory: Category | undefined;
+
+        // Build opening balance transaction locally if a non-zero balance was provided.
+        // This is included in the same POST /api/accounts payload so the server creates
+        // the account and transaction atomically — avoiding the FK race condition that
+        // occurs when two separate fire-and-forget requests are dispatched in sequence.
+        let openingTx: Transaction | undefined;
+        if (openingBalance !== undefined && openingBalance !== 0) {
+          openingTx = {
+            id: crypto.randomUUID(),
+            budgetId: currentBudgetId,
+            accountId: newAccount.id,
+            date: format(new Date(), 'yyyy-MM-dd'),
+            payee: 'Opening Balance',
+            amount: openingBalance,
+            memo: `Initial balance for ${account.name}`,
+            cleared: true,
+            isOpeningBalance: true,
+          };
+          newAccount.balance = openingBalance;
+        }
 
         if (account.type === 'loan' && account.monthlyPayment && account.monthlyPayment > 0) {
           set((state) => {
@@ -418,12 +438,14 @@ export const useStore = create<AppState>()(
             return {
               accounts: [...state.accounts, newAccount],
               categoryGroups: updatedGroups,
-              categories: [...state.categories, newCategory]
+              categories: [...state.categories, newCategory],
+              ...(openingTx ? { transactions: [openingTx, ...state.transactions] } : {}),
             };
           });
         } else {
           set((state) => ({
-            accounts: [...state.accounts, newAccount]
+            accounts: [...state.accounts, newAccount],
+            ...(openingTx ? { transactions: [openingTx!, ...state.transactions] } : {}),
           }));
         }
 
@@ -449,6 +471,17 @@ export const useStore = create<AppState>()(
             name: newCategory.name,
             goal: newCategory.goal,
             linkedAccountId: newCategory.linkedAccountId,
+          } : undefined,
+          openingTransaction: openingTx ? {
+            id: openingTx.id,
+            budgetId: openingTx.budgetId,
+            accountId: openingTx.accountId,
+            date: openingTx.date,
+            payee: openingTx.payee,
+            amount: openingTx.amount,
+            memo: openingTx.memo,
+            cleared: openingTx.cleared,
+            isOpeningBalance: openingTx.isOpeningBalance,
           } : undefined,
         });
 

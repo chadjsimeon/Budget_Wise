@@ -365,7 +365,7 @@ export async function registerRoutes(
   app.post("/api/accounts", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { account, category, categoryGroup } = req.body;
+      const { account, category, categoryGroup, openingTransaction } = req.body;
 
       if (!await verifyBudgetOwnership(userId, account.budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
@@ -405,6 +405,21 @@ export async function registerRoutes(
         loanStartDate: account.loanStartDate,
         linkedCategoryId: account.linkedCategoryId,
       });
+
+      // Create opening balance transaction in the same request so the account row
+      // is guaranteed to exist before the transaction FK is checked.
+      if (openingTransaction) {
+        await storage.createTransaction({
+          id: openingTransaction.id,
+          budgetId: openingTransaction.budgetId,
+          accountId: openingTransaction.accountId,
+          date: openingTransaction.date,
+          payee: openingTransaction.payee,
+          amount: openingTransaction.amount,
+          memo: openingTransaction.memo,
+          cleared: openingTransaction.cleared,
+        });
+      }
 
       res.status(201).json({ id: account.id });
     } catch (error) {
