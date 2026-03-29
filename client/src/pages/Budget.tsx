@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { useStore } from '@/lib/store';
+import { useStore, BUDGET_ACCOUNT_TYPES } from '@/lib/store';
 import { useCurrencyFormatter } from '@/lib/currency';
 import { format, addMonths, subMonths, parse } from 'date-fns';
 import {
@@ -12,7 +12,8 @@ import {
   CheckCircle2,
   Pencil,
   Trash2,
-  GripVertical
+  GripVertical,
+  ArrowDown
 } from 'lucide-react';
 import {
   DndContext,
@@ -48,7 +49,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { MoveMoneyDialog } from '@/components/modals/MoveMoneyDialog';
 import { CreateCategoryDialog } from '@/components/modals/CreateCategoryDialog';
 import { CreateCategoryGroupDialog } from '@/components/modals/CreateCategoryGroupDialog';
+import { CreateAccountDialog } from '@/components/modals/CreateAccountDialog';
 import { CategoryGroupSection } from '@/components/CategoryGroupSection';
+import { HelpBadge } from '@/components/onboarding/HelpBadge';
 
 type FilterType = 'all' | 'underfunded' | 'overfunded' | 'available';
 
@@ -57,6 +60,7 @@ export default function BudgetPage() {
     currentMonth,
     setMonth,
     currentBudgetId,
+    accounts: allAccounts,
     categoryGroups: allCategoryGroups,
     categories: allCategories,
     monthlyAssignments,
@@ -71,6 +75,10 @@ export default function BudgetPage() {
     applyBudgetTemplate,
     deleteCategoryGroup
   } = useStore();
+
+  const budgetAccounts = allAccounts.filter(
+    (a) => a.budgetId === currentBudgetId && a.isActive && BUDGET_ACCOUNT_TYPES.includes(a.type)
+  );
 
   const { toast } = useToast();
 
@@ -385,18 +393,39 @@ export default function BudgetPage() {
 
             {/* Ready to Assign */}
             <div className="flex flex-col items-center gap-1">
-              <div className={cn(
-                "text-2xl font-bold flex items-center gap-2",
-                readyToAssign === 0 ? "text-slate-900" : readyToAssign > 0 ? "text-slate-900" : "text-red-600"
-              )}>
-                {formatCurrency(readyToAssign)}
-                {readyToAssign === 0 && (
-                  <CheckCircle2 className="w-6 h-6 text-green-600" />
-                )}
-              </div>
-              <span className="text-xs text-slate-500 font-medium">
-                {readyToAssign === 0 ? "All Money Assigned" : "Ready to Assign"}
-              </span>
+              {budgetAccounts.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 text-center">
+                  <span className="text-sm text-slate-500">No accounts yet — add one to start budgeting</span>
+                  <CreateAccountDialog
+                    defaultType="checking"
+                    trigger={
+                      <button className="text-xs font-medium text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 py-1 px-3 rounded-full transition-colors">
+                        + Add Account
+                      </button>
+                    }
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className={cn(
+                    "text-2xl font-bold flex items-center gap-2",
+                    readyToAssign === 0 ? "text-slate-900" : readyToAssign > 0 ? "text-slate-900" : "text-red-600"
+                  )}>
+                    {formatCurrency(readyToAssign)}
+                    {readyToAssign === 0 && (
+                      <CheckCircle2 className="w-6 h-6 text-green-600" />
+                    )}
+                  </div>
+                  <span className="text-xs text-slate-500 font-medium flex items-center gap-1">
+                    {readyToAssign === 0 ? "All Money Assigned" : "Ready to Assign"}
+                    <HelpBadge
+                      title="Ready to Assign"
+                      content="This is unbudgeted money from your accounts. Click a number in the Assigned column to allocate it to a category."
+                      next="Assign money to your categories below"
+                    />
+                  </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -476,13 +505,56 @@ export default function BudgetPage() {
         {/* Categories Content */}
         <div className="flex-1 overflow-auto bg-white">
           <div className="max-w-5xl mx-auto">
+            {/* Assign-money nudge banner */}
+            {budgetAccounts.length > 0 && readyToAssign > 0 && monthSummary.assigned === 0 && (
+              <div className="mx-4 mt-4 mb-0 flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
+                <ArrowDown className="w-4 h-4 shrink-0 mt-0.5 text-blue-500" />
+                <span>
+                  You have <strong>{formatCurrency(readyToAssign)}</strong> ready to assign.
+                  Click a number in the <strong>Assigned</strong> column to start budgeting it.
+                </span>
+              </div>
+            )}
+
             {/* Table Header */}
             <div className="sticky top-0 bg-slate-50 border-b border-slate-200 grid grid-cols-[1fr_100px_100px] md:grid-cols-[1fr_140px_140px_140px_140px] gap-2 md:gap-4 px-4 md:px-6 py-3">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</div>
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right hidden md:block">Goal</div>
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Assigned</div>
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right hidden md:block">Activity</div>
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right">Available</div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                Category
+                <HelpBadge
+                  title="Categories"
+                  content="Categories are buckets for your money. Group them by theme (Bills, Needs, Wants). Every dollar you have should belong to a category."
+                  next="Set a Goal to track your target spending per category"
+                />
+              </div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right hidden md:flex items-center justify-end gap-1">
+                Goal
+                <HelpBadge
+                  title="Goal"
+                  content="Your monthly target for this category. Used by Auto-Assign to know how much to allocate. Optional but recommended."
+                />
+              </div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right flex items-center justify-end gap-1">
+                Assigned
+                <HelpBadge
+                  title="Assigned"
+                  content="How much you've budgeted to this category this month. Click to edit. Pull from your Ready to Assign balance."
+                  next="After assigning, record transactions to track spending"
+                />
+              </div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right hidden md:flex items-center justify-end gap-1">
+                Activity
+                <HelpBadge
+                  title="Activity"
+                  content="Transactions recorded against this category this month. Spending shows as negative. This is read-only — it updates automatically."
+                />
+              </div>
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider text-right flex items-center justify-end gap-1">
+                Available
+                <HelpBadge
+                  title="Available"
+                  content="Assigned + Activity. Green means money remains. Red means you've overspent and need to cover the shortfall."
+                />
+              </div>
             </div>
 
             {/* Category Groups */}
@@ -555,6 +627,10 @@ export default function BudgetPage() {
           <h2 className="text-lg font-semibold text-slate-900 flex items-center gap-2">
             {format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMMM')}'s Summary
             <ChevronDown className="w-4 h-4 text-slate-400" />
+            <HelpBadge
+              title="Month Summary"
+              content="A snapshot of this month's budget. Left Over carries forward from the previous month. Activity is total spending. Available is what's left across all categories."
+            />
           </h2>
         </div>
 

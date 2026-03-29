@@ -11,6 +11,7 @@ import ResetPasswordPage from "@/pages/ResetPassword";
 import { useAuth } from "@/hooks/use-auth";
 import { BudgetDataProvider } from "@/components/providers/BudgetDataProvider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OnboardingProgress } from "@/components/onboarding/OnboardingProgress";
 
 function App() {
   const [location, setLocation] = useLocation();
@@ -86,6 +87,9 @@ function App() {
               open={showAccountDialog}
               onOpenChange={setShowAccountDialog}
             />
+
+            {/* Onboarding progress tracker */}
+            <OnboardingProgress />
           </AppShell>
           </BudgetDataProvider>
           </ErrorBoundary>

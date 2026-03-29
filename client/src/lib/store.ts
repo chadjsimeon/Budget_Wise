@@ -199,6 +199,12 @@ interface AppState {
   getReadyToAssign: (month: string) => number;
   getNetWorth: () => number;
 
+  // Onboarding
+  helpModeEnabled: boolean;
+  hasSeenWelcome: boolean;
+  toggleHelpMode: () => void;
+  dismissWelcome: () => void;
+
   // Auth
   _hasHydrated: boolean;
   hydrateFromServer: (data: ServerBudgetData) => void;
@@ -276,7 +282,13 @@ export const useStore = create<AppState>()(
       monthlyAssignments: INITIAL_ASSIGNMENTS,
       budgetTemplates: [],
       currentMonth: format(new Date(), 'yyyy-MM'),
+      helpModeEnabled: false,
+      hasSeenWelcome: false,
       _hasHydrated: false,
+
+      // ============= ONBOARDING =============
+      toggleHelpMode: () => set((state) => ({ helpModeEnabled: !state.helpModeEnabled })),
+      dismissWelcome: () => set({ hasSeenWelcome: true }),
 
       // ============= BUDGETS =============
       addBudget: (budget) => {
@@ -1073,6 +1085,8 @@ export const useStore = create<AppState>()(
         monthlyAssignments: state.monthlyAssignments,
         budgetTemplates: state.budgetTemplates,
         currentMonth: state.currentMonth,
+        helpModeEnabled: state.helpModeEnabled,
+        hasSeenWelcome: state.hasSeenWelcome,
       }),
       migrate: (persistedState: any, version: number) => {
         // If version doesn't match, return undefined to force initial state
