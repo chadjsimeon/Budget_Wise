@@ -153,3 +153,67 @@ export function calculateMinimumInterestPayment(
   const monthlyRate = (annualRate / 100) / 12;
   return Math.abs(balance) * monthlyRate;
 }
+
+// Credit card minimum payment rules
+export const CC_MIN_RATE = 0.02;  // 2% of outstanding balance
+export const CC_MIN_FIXED = 25;   // TTD $25 floor
+
+/**
+ * Calculate credit card minimum monthly payment
+ * Rule: max(2% of balance, TTD $25)
+ */
+export function calcCreditCardMinPayment(balance: number): number {
+  const abs = Math.abs(balance);
+  if (abs <= 0) return 0;
+  return Math.max(abs * CC_MIN_RATE, CC_MIN_FIXED);
+}
+
+/**
+ * Project credit card payoff paying only the minimum each month.
+ * The minimum recalculates each month as the balance falls.
+ */
+export function calculateCreditCardMinimumAmortization(
+  currentBalance: number,
+  annualRate: number,
+  startDate: Date = new Date()
+): LoanProjection {
+  const monthlyRate = (annualRate / 100) / 12;
+  let remaining = Math.abs(currentBalance);
+  const schedule: AmortizationRow[] = [];
+  let month = 1;
+  let totalInterest = 0;
+
+  while (remaining > 0.01 && month <= 600) {
+    const interest = remaining * monthlyRate;
+    // Minimum payment for this month (recalculated on current balance)
+    const minPayment = Math.max(remaining * CC_MIN_RATE, CC_MIN_FIXED);
+    // Cap at balance + interest so we never overpay
+    const payment = Math.min(minPayment, remaining + interest);
+    const principal = Math.max(payment - interest, 0);
+
+    if (principal <= 0) break; // Interest eating entire minimum – stop
+
+    remaining = Math.max(remaining - principal, 0);
+    totalInterest += interest;
+
+    schedule.push({
+      month,
+      date: format(addMonths(startDate, month - 1), 'MMM dd, yyyy'),
+      payment,
+      principal,
+      interest,
+      balance: remaining,
+    });
+
+    month++;
+  }
+
+  const payoffDate = addMonths(startDate, schedule.length);
+  return {
+    payoffDate,
+    monthsRemaining: schedule.length,
+    totalInterest,
+    totalPaid: Math.abs(currentBalance) + totalInterest,
+    schedule,
+  };
+}

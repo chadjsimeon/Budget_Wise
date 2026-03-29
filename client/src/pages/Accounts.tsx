@@ -46,6 +46,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { LoanPayoffPlanner } from '@/components/LoanPayoffPlanner';
+import { CreditCardPlanner } from '@/components/CreditCardPlanner';
 import { useToast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
@@ -728,9 +729,15 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
         </div>
       )}
 
-      {/* Loan Planner or Transactions Table */}
+      {/* Loan Planner, Credit Card Planner, or Transactions Table */}
       {currentAccount && currentAccount.type === 'loan' ? (
         <LoanPayoffPlanner
+          account={currentAccount}
+          transactions={accountTransactions}
+          formatCurrency={formatCurrency}
+        />
+      ) : currentAccount && currentAccount.type === 'credit' ? (
+        <CreditCardPlanner
           account={currentAccount}
           transactions={accountTransactions}
           formatCurrency={formatCurrency}

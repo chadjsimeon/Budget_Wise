@@ -122,6 +122,10 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
           monthlyPayment: parseFloat(formData.monthlyPayment) || 0,
           originalBalance: Math.abs(balanceAmount), // Store as positive for progress calculation
           loanStartDate: format(new Date(), 'yyyy-MM-dd')
+        }),
+        // Credit cards store the APR (default 25% if left blank)
+        ...(formData.type === 'credit' && {
+          interestRate: parseFloat(formData.interestRate) || 25,
         })
       };
       // Pass the opening balance directly to addAccount so the account and
@@ -211,6 +215,29 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
               placeholder="0.00"
               required
             />
+          </div>
+        )}
+
+        {/* Credit card optional interest rate */}
+        {((isEditMode && account?.type === 'credit') || (!isEditMode && formData.type === 'credit')) && (
+          <div className="space-y-1">
+            <Label htmlFor="ccInterestRate" className="text-sm font-medium">
+              Annual Interest Rate (APR) <span className="text-slate-400 font-normal">— optional, defaults to 25%</span>
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                id="ccInterestRate"
+                type="number"
+                step="0.01"
+                min="0"
+                max="100"
+                placeholder="25.00"
+                value={formData.interestRate}
+                onChange={(e) => setFormData({ ...formData, interestRate: e.target.value })}
+                className="flex-1"
+              />
+              <span className="text-sm text-slate-500 font-medium min-w-[40px]">%</span>
+            </div>
           </div>
         )}
 
