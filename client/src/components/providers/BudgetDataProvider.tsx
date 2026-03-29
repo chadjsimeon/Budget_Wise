@@ -11,6 +11,7 @@ export function BudgetDataProvider({ children }: BudgetDataProviderProps) {
   const hydrateFromServer = useStore((state) => state.hydrateFromServer);
   const clearHydrated = useStore((state) => state.clearHydrated);
   const hasHydrated = useStore((state) => state._hasHydrated);
+  const addBudget = useStore((state) => state.addBudget);
 
   // Reset hydration flag on mount so fresh server data is always fetched
   useEffect(() => {
@@ -20,8 +21,19 @@ export function BudgetDataProvider({ children }: BudgetDataProviderProps) {
   useEffect(() => {
     if (data && !hasHydrated) {
       hydrateFromServer(data);
+      // New user with no budgets on the server — create the default budget
+      // so they land on a pre-populated Bills/Needs/Wants structure
+      if (data.budgets.length === 0) {
+        addBudget({
+          name: "My Budget",
+          currency: "TTD",
+          currencyPlacement: "before",
+          numberFormat: "1,234.56",
+          dateFormat: "DD/MM/YYYY",
+        });
+      }
     }
-  }, [data, hasHydrated, hydrateFromServer]);
+  }, [data, hasHydrated, hydrateFromServer, addBudget]);
 
   if (isLoading || !hasHydrated) {
     return (
