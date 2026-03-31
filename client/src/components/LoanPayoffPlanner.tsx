@@ -311,8 +311,9 @@ export function LoanPayoffPlanner({ account, transactions, formatCurrency }: Loa
                         {/* Auto-generated payment groups */}
                         {paymentGroups.slice(0, 12).map(({ principalTx, interestTx }) => {
                           const interestAmt = Math.abs(interestTx?.amount ?? 0);
-                          const principalAmt = principalTx.amount;
-                          const total = principalAmt + interestAmt;
+                          const totalPaid = principalTx.amount;
+                          const principalAmt = totalPaid - interestAmt;
+                          const total = totalPaid;
                           return (
                             <div key={principalTx.id} className="grid grid-cols-4 gap-2 py-2 border-b last:border-0 text-sm">
                               <span className="text-slate-600">{principalTx.date}</span>
