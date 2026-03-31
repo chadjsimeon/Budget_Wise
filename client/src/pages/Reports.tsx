@@ -23,7 +23,9 @@ export default function ReportsPage() {
   } = useStore();
 
   // Filter by current budget
-  const transactions = allTransactions.filter(t => t.budgetId === currentBudgetId);
+  const transactions = allTransactions.filter(
+    t => t.budgetId === currentBudgetId && t.payee !== 'Opening Balance'
+  );
   const categories = allCategories.filter(c => c.budgetId === currentBudgetId);
   const categoryGroups = allCategoryGroups.filter(g => g.budgetId === currentBudgetId);
 
