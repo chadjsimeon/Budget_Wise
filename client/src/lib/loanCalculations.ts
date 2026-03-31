@@ -154,6 +154,29 @@ export function calculateMinimumInterestPayment(
   return Math.abs(balance) * monthlyRate;
 }
 
+// ─── Single-payment breakdown ────────────────────────────────────────────────
+
+export interface LoanPaymentBreakdown {
+  interest: number;   // cost of borrowing this month (always ≥ 0)
+  principal: number;  // amount that reduces the balance (0 if payment ≤ interest)
+}
+
+/**
+ * Split one loan payment into its interest and principal components.
+ * @param balanceAbs   Absolute value of the current loan balance (positive number).
+ * @param annualRate   Annual interest rate as a percentage (e.g. 12.0 for 12 %).
+ * @param paymentAmount Absolute value of the payment being made.
+ */
+export function calculatePaymentBreakdown(
+  balanceAbs: number,
+  annualRate: number,
+  paymentAmount: number
+): LoanPaymentBreakdown {
+  const interest = balanceAbs * (annualRate / 100) / 12;
+  const principal = Math.max(paymentAmount - interest, 0);
+  return { interest, principal };
+}
+
 // Credit card minimum payment rules
 export const CC_MIN_RATE = 0.02;  // 2% of outstanding balance
 export const CC_MIN_FIXED = 25;   // TTD $25 floor

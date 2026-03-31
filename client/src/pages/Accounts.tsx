@@ -18,7 +18,8 @@ import {
   Check,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Info
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,6 +48,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { LoanPayoffPlanner } from '@/components/LoanPayoffPlanner';
 import { CreditCardPlanner } from '@/components/CreditCardPlanner';
+import { calculatePaymentBreakdown } from '@/lib/loanCalculations';
 import { useToast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
@@ -626,6 +628,35 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
                     </Select>
                   </div>
                 )}
+
+                {/* Loan payment breakdown callout */}
+                {(() => {
+                  if (newTx.type === 'transfer' || !newTx.categoryId || newTx.categoryId === 'uncategorized') return null;
+                  const cat = categories.find(c => c.id === newTx.categoryId);
+                  if (!cat?.linkedAccountId) return null;
+                  const linkedLoan = allAccounts.find(a => a.id === cat.linkedAccountId && a.type === 'loan' && a.isActive);
+                  if (!linkedLoan) return null;
+                  const amtNum = parseFloat(newTx.amount);
+                  if (!amtNum || amtNum >= 0) return null;
+                  const { interest, principal } = calculatePaymentBreakdown(
+                    Math.abs(linkedLoan.balance),
+                    linkedLoan.interestRate ?? 0,
+                    Math.abs(amtNum)
+                  );
+                  return (
+                    <div className="col-span-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex gap-2 text-sm">
+                      <Info className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                      <div className="text-blue-800">
+                        This payment will reduce <span className="font-semibold">{linkedLoan.name}</span> balance.
+                        {' '}Interest this month: <span className="font-semibold">{formatCurrency(interest)}</span>
+                        {' '}· Principal: <span className="font-semibold">{formatCurrency(principal)}</span>
+                        {principal === 0 && (
+                          <span className="block text-amber-700 mt-1">⚠ Payment only covers interest — balance won't decrease.</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="grid grid-cols-4 items-center gap-4">
                   <Label htmlFor="amount" className="text-right">Amount</Label>
