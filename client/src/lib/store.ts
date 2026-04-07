@@ -207,6 +207,9 @@ interface AppState {
   toggleHelpMode: () => void;
   dismissWelcome: () => void;
 
+  // Default category seeder (idempotent — skips if categories already exist)
+  seedDefaultCategories: () => void;
+
   // Auth
   _hasHydrated: boolean;
   hydrateFromServer: (data: ServerBudgetData) => void;
@@ -1226,6 +1229,48 @@ export const useStore = create<AppState>()(
           name: newTemplate.name,
           isDefault: newTemplate.isDefault,
           goals: newTemplate.goals,
+        });
+      },
+
+      // ============= DEFAULT CATEGORY SEEDER =============
+      seedDefaultCategories: () => {
+        const state = get();
+        const budgetId = state.currentBudgetId;
+        if (!budgetId) return;
+
+        // Idempotent — skip if this budget already has any category groups
+        const existing = state.categoryGroups.filter(g => g.budgetId === budgetId);
+        if (existing.length > 0) return;
+
+        const newGroups = DEFAULT_CATEGORY_STRUCTURE.map(template => ({
+          id: crypto.randomUUID(),
+          budgetId,
+          name: template.groupName,
+        }));
+
+        const newCategories: Category[] = [];
+        DEFAULT_CATEGORY_STRUCTURE.forEach((template, idx) => {
+          const groupId = newGroups[idx].id;
+          template.categories.forEach(cat => {
+            newCategories.push({
+              id: crypto.randomUUID(),
+              budgetId,
+              groupId,
+              name: cat.name,
+              goal: cat.goal,
+            });
+          });
+        });
+
+        set(s => ({
+          categoryGroups: [...s.categoryGroups, ...newGroups],
+          categories: [...s.categories, ...newCategories],
+        }));
+
+        // Batch to server so FK ordering is guaranteed (groups before categories)
+        syncToServer("POST", `/api/budgets/${budgetId}/seed-categories`, {
+          categoryGroups: newGroups,
+          categories: newCategories,
         });
       },
 

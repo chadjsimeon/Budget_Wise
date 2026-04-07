@@ -77,7 +77,7 @@ export async function registerRoutes(
         password: hashPassword(password),
       });
 
-      // Create a default budget for new users
+      // Create a default budget with starter categories for new users
       const budgetId = crypto.randomUUID();
       await storage.createBudget({
         id: budgetId,
@@ -88,6 +88,21 @@ export async function registerRoutes(
         numberFormat: "1,234.56",
         dateFormat: "MM/DD/YYYY",
       });
+
+      const DEFAULT_GROUPS = [
+        { name: 'Monthly Bills', cats: ['Rent/Mortgage', 'Electricity', 'Water', 'Internet', 'Phone'] },
+        { name: 'Lifestyle',     cats: ['Groceries', 'Dining Out', 'Gym', 'Entertainment'] },
+        { name: 'Transport',     cats: ['Fuel', 'Car Insurance', 'Car Maintenance'] },
+        { name: 'Subscriptions', cats: ['Netflix', 'Amazon Prime', 'Spotify'] },
+        { name: 'Savings',       cats: ['Emergency Fund', 'Vacation'] },
+      ];
+      for (const group of DEFAULT_GROUPS) {
+        const groupId = crypto.randomUUID();
+        await storage.createCategoryGroup({ id: groupId, budgetId, name: group.name });
+        for (const catName of group.cats) {
+          await storage.createCategory({ id: crypto.randomUUID(), budgetId, groupId, name: catName });
+        }
+      }
 
       req.logIn({ id: user.id, email: user.email }, (loginErr) => {
         if (loginErr) return next(loginErr);
@@ -357,6 +372,42 @@ export async function registerRoutes(
       const userId = req.user!.id;
       await storage.deleteBudget(req.params.id, userId);
       res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Idempotent default category seeder for existing budgets that have no categories
+  app.post("/api/budgets/:id/seed-categories", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const budgetId = req.params.id;
+
+      if (!await verifyBudgetOwnership(userId, budgetId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // Skip if categories already exist — idempotent
+      const existing = await db
+        .select({ id: categoryGroups.id })
+        .from(categoryGroups)
+        .where(eq(categoryGroups.budgetId, budgetId))
+        .limit(1);
+
+      if (existing.length > 0) {
+        return res.json({ ok: true, seeded: false });
+      }
+
+      const { categoryGroups: groups = [], categories: cats = [] } = req.body;
+
+      for (const g of groups) {
+        await storage.createCategoryGroup({ id: g.id, budgetId, name: g.name });
+      }
+      for (const c of cats) {
+        await storage.createCategory({ id: c.id, budgetId, groupId: c.groupId, name: c.name, goal: c.goal });
+      }
+
+      res.json({ ok: true, seeded: true });
     } catch (error) {
       next(error);
     }

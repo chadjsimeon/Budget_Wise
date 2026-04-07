@@ -12,6 +12,7 @@ export function BudgetDataProvider({ children }: BudgetDataProviderProps) {
   const clearHydrated = useStore((state) => state.clearHydrated);
   const hasHydrated = useStore((state) => state._hasHydrated);
   const addBudget = useStore((state) => state.addBudget);
+  const seedDefaultCategories = useStore((state) => state.seedDefaultCategories);
 
   // Reset hydration flag on mount so fresh server data is always fetched
   useEffect(() => {
@@ -21,9 +22,9 @@ export function BudgetDataProvider({ children }: BudgetDataProviderProps) {
   useEffect(() => {
     if (data && !hasHydrated) {
       hydrateFromServer(data);
-      // New user with no budgets on the server — create the default budget
-      // so they land on a pre-populated Bills/Needs/Wants structure
+
       if (data.budgets.length === 0) {
+        // Brand new user with no budget — create one (also seeds categories)
         addBudget({
           name: "My Budget",
           currency: "TTD",
@@ -31,9 +32,14 @@ export function BudgetDataProvider({ children }: BudgetDataProviderProps) {
           numberFormat: "1,234.56",
           dateFormat: "DD/MM/YYYY",
         });
+      } else if (data.categoryGroups.length === 0) {
+        // Budget exists but has no category groups — seed defaults now.
+        // Handles users registered before the server-side category seeding was added.
+        // seedDefaultCategories is idempotent: skips if categories already exist.
+        seedDefaultCategories();
       }
     }
-  }, [data, hasHydrated, hydrateFromServer, addBudget]);
+  }, [data, hasHydrated, hydrateFromServer, addBudget, seedDefaultCategories]);
 
   if (isLoading || !hasHydrated) {
     return (
