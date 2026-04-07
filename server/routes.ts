@@ -307,7 +307,7 @@ export async function registerRoutes(
   app.post("/api/budgets", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { budget, categoryGroups: groups, categories: cats, assignments } = req.body;
+      const { budget, categoryGroups: groups, categories: cats } = req.body;
 
       // Create the budget
       await storage.createBudget({
@@ -334,13 +334,6 @@ export async function registerRoutes(
           name: c.name,
           goal: c.goal,
         });
-      }
-
-      // Seed starter monthly assignments
-      if (assignments?.length) {
-        await storage.upsertAssignmentsBulk(
-          assignments.map((a: any) => ({ ...a, budgetId: budget.id }))
-        );
       }
 
       res.status(201).json({ id: budget.id });
