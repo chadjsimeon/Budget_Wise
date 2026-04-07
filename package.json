@@ -101,7 +101,7 @@
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
     "cross-env": "^10.1.0",
-    "drizzle-kit": "^0.18.1",
+    "drizzle-kit": "^0.31.10",
     "esbuild": "^0.25.0",
     "jsdom": "^27.3.0",
     "postcss": "^8.5.6",

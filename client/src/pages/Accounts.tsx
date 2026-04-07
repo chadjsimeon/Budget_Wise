@@ -48,7 +48,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { LoanPayoffPlanner } from '@/components/LoanPayoffPlanner';
 import { CreditCardPlanner } from '@/components/CreditCardPlanner';
-import { calculatePaymentBreakdown } from '@/lib/loanCalculations';
+import { calculatePaymentBreakdown, calcCreditCardMinPayment } from '@/lib/loanCalculations';
 import { useToast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
@@ -146,6 +146,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
   const [editingTx, setEditingTx] = useState<string | null>(null);
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
+  const [showCCPlanner, setShowCCPlanner] = useState(false);
   const [editingAccount, setEditingAccount] = useState<typeof currentAccount | null>(null);
   const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
   const [newTx, setNewTx] = useState({
@@ -218,13 +219,17 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
 
       const finalAmount = newTx.type === 'expense' ? -Math.abs(amount) : Math.abs(amount);
 
+      const resolvedCategoryId = (newTx.categoryId && newTx.categoryId !== 'uncategorized')
+        ? newTx.categoryId
+        : undefined;
+
       if (editingTx) {
         // Update existing transaction
         updateTransaction(editingTx, {
           date: format(newTx.date, 'yyyy-MM-dd'),
           payee: newTx.payee,
           amount: finalAmount,
-          categoryId: newTx.categoryId || undefined,
+          categoryId: resolvedCategoryId,
           memo: newTx.memo,
         });
       } else {
@@ -234,7 +239,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
           date: format(newTx.date, 'yyyy-MM-dd'),
           payee: newTx.payee,
           amount: finalAmount,
-          categoryId: newTx.categoryId || undefined,
+          categoryId: resolvedCategoryId,
           memo: newTx.memo,
           cleared: false
         });
@@ -760,21 +765,64 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
         </div>
       )}
 
-      {/* Loan Planner, Credit Card Planner, or Transactions Table */}
+      {/* Loan Planner or Transactions Table */}
       {currentAccount && currentAccount.type === 'loan' ? (
         <LoanPayoffPlanner
           account={currentAccount}
           transactions={accountTransactions}
           formatCurrency={formatCurrency}
         />
-      ) : currentAccount && currentAccount.type === 'credit' ? (
-        <CreditCardPlanner
-          account={currentAccount}
-          transactions={accountTransactions}
-          formatCurrency={formatCurrency}
-        />
       ) : (
         <div className="flex-1 overflow-auto">
+          {/* Credit card summary bar */}
+          {currentAccount?.type === 'credit' && (
+            <div className="flex items-center gap-6 px-8 py-3 bg-slate-50 border-b text-sm">
+              <div>
+                <span className="text-slate-500">Balance Owed</span>
+                <span className="ml-2 font-semibold text-slate-800">
+                  {formatCurrency(Math.abs(currentAccount.balance))}
+                </span>
+              </div>
+              {currentAccount.interestRate != null && (
+                <div>
+                  <span className="text-slate-500">APR</span>
+                  <span className="ml-2 font-semibold text-slate-800">
+                    {currentAccount.interestRate}%
+                  </span>
+                </div>
+              )}
+              <div>
+                <span className="text-slate-500">Est. Min Payment</span>
+                <span className="ml-2 font-semibold text-slate-800">
+                  {formatCurrency(calcCreditCardMinPayment(currentAccount.balance))}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="ml-auto"
+                onClick={() => setShowCCPlanner(true)}
+              >
+                Payoff Planner
+              </Button>
+            </div>
+          )}
+
+          {/* Credit card payoff planner modal */}
+          {currentAccount?.type === 'credit' && (
+            <Dialog open={showCCPlanner} onOpenChange={setShowCCPlanner}>
+              <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Credit Card Payoff Planner — {currentAccount.name}</DialogTitle>
+                </DialogHeader>
+                <CreditCardPlanner
+                  account={currentAccount}
+                  transactions={accountTransactions}
+                  formatCurrency={formatCurrency}
+                />
+              </DialogContent>
+            </Dialog>
+          )}
           <Table>
           <TableHeader>
             <TableRow>

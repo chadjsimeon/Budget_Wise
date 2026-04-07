@@ -247,20 +247,30 @@ const INITIAL_ASSIGNMENTS: MonthlyAssignments = {};
 const DEFAULT_CATEGORY_STRUCTURE = [
   {
     groupName: 'Bills',
-    categories: ['Rent/Mortgage', 'Phone', 'Internet', 'Utilities']
+    categories: [
+      { name: 'Rent/Mortgage', goal: 3500 },
+      { name: 'Phone', goal: 200 },
+      { name: 'Internet', goal: 150 },
+      { name: 'Utilities', goal: 300 },
+    ]
   },
   {
     groupName: 'Needs',
-    categories: ['Groceries', 'Transportation', 'Medical expenses', 'Emergency fund']
+    categories: [
+      { name: 'Groceries', goal: 1500 },
+      { name: 'Transportation', goal: 500 },
+      { name: 'Medical expenses', goal: 200 },
+      { name: 'Emergency fund', goal: 500 },
+    ]
   },
   {
     groupName: 'Wants',
     categories: [
-      'Dining out',
-      'Entertainment',
-      'Vacation',
-      'Stuff I forgot to plan for',
-      'Budget Wise subscription'
+      { name: 'Dining out', goal: 400 },
+      { name: 'Entertainment', goal: 200 },
+      { name: 'Vacation', goal: 300 },
+      { name: 'Stuff I forgot to plan for', goal: 200 },
+      { name: 'Budget Wise subscription', goal: 50 },
     ]
   }
 ];
@@ -309,21 +319,31 @@ export const useStore = create<AppState>()(
         const newCategories: Category[] = [];
         DEFAULT_CATEGORY_STRUCTURE.forEach((template, idx) => {
           const groupId = newGroups[idx].id;
-          template.categories.forEach(categoryName => {
+          template.categories.forEach(cat => {
             newCategories.push({
               id: crypto.randomUUID(),
               budgetId: newBudget.id,
               groupId: groupId,
-              name: categoryName
+              name: cat.name,
+              goal: cat.goal,
             });
           });
         });
+
+        const currentMonth = format(new Date(), 'yyyy-MM');
+        const starterAssignments = Object.fromEntries(
+          newCategories.map(c => [c.id, c.goal ?? 0])
+        );
 
         set((state) => ({
           budgets: [...state.budgets, newBudget],
           currentBudgetId: newBudget.id,
           categoryGroups: [...state.categoryGroups, ...newGroups],
-          categories: [...state.categories, ...newCategories]
+          categories: [...state.categories, ...newCategories],
+          monthlyAssignments: {
+            ...state.monthlyAssignments,
+            [newBudget.id]: { [currentMonth]: starterAssignments },
+          },
         }));
 
         syncToServer("POST", "/api/budgets", {
@@ -337,6 +357,11 @@ export const useStore = create<AppState>()(
           },
           categoryGroups: newGroups,
           categories: newCategories,
+          assignments: newCategories.map(c => ({
+            categoryId: c.id,
+            monthKey: currentMonth,
+            amount: c.goal ?? 0,
+          })),
         });
       },
 
