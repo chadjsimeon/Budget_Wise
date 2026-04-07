@@ -832,7 +832,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
           {/* Credit card payoff planner modal */}
           {currentAccount?.type === 'credit' && (
             <Dialog open={showCCPlanner} onOpenChange={setShowCCPlanner}>
-              <DialogContent className="sm:max-w-[700px] max-h-[90vh] overflow-y-auto">
+              <DialogContent className="sm:max-w-[760px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Credit Card Payoff Planner — {currentAccount.name}</DialogTitle>
                 </DialogHeader>

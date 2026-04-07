@@ -30,15 +30,23 @@ interface CreditCardPlannerProps {
 interface MetricCardProps {
   value: string;
   label: string;
-  className?: string;
+  highlight?: boolean;
+  sublabel?: string;
 }
 
-function MetricCard({ value, label, className = '' }: MetricCardProps) {
+function MetricCard({ value, label, highlight = false, sublabel }: MetricCardProps) {
   return (
-    <Card className="shadow-sm">
-      <CardContent className="p-6">
-        <div className={`text-2xl font-bold text-slate-700 ${className}`}>{value}</div>
-        <div className="text-sm text-slate-500 mt-1">{label}</div>
+    <Card className={highlight ? 'shadow-sm border-amber-200 bg-amber-50' : 'shadow-sm'}>
+      <CardContent className="p-5">
+        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+          {label}
+        </div>
+        <div className={highlight ? 'text-4xl font-bold text-amber-700' : 'text-2xl font-bold text-slate-800'}>
+          {value}
+        </div>
+        {sublabel && (
+          <div className="text-xs text-slate-500 mt-1">{sublabel}</div>
+        )}
       </CardContent>
     </Card>
   );
@@ -75,29 +83,31 @@ export function CreditCardPlanner({ account, transactions, formatCurrency }: Cre
   }, [minimumProjection]);
 
   return (
-    <div className="space-y-6 p-6">
-      {/* Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="space-y-8 p-2">
+      {/* 2×2 Metrics Grid */}
+      <div className="grid grid-cols-2 gap-4">
         <MetricCard value={formatCurrency(balance)} label="Balance Owing" />
         <MetricCard value={`${interestRate}%`} label="Interest Rate (APR)" />
         <MetricCard value={formatCurrency(minPayment)} label="Minimum Monthly Payment" />
         <MetricCard
           value={minimumProjection ? formatPayoffDate(minimumProjection.payoffDate) : '—'}
           label="Payoff at Minimums"
+          highlight
+          sublabel={minimumProjection ? `${formatTimeRemaining(minimumProjection.monthsRemaining)} from now` : undefined}
         />
       </div>
 
       {/* Minimum-payment warning */}
       {minimumProjection && (
-        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
-          <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-          <p className="text-sm text-amber-800">
+        <div className="flex items-start gap-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-4">
+          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <p className="text-sm text-amber-800 leading-relaxed">
             Paying only the minimum of{' '}
             <strong>{formatCurrency(minPayment)}/mo</strong> will take{' '}
             <strong>{formatTimeRemaining(minimumProjection.monthsRemaining)}</strong> to pay off
             and cost{' '}
-            <strong>{formatCurrency(minimumProjection.totalInterest)}</strong> in interest.
-            Use the simulator to see how paying more helps.
+            <strong>{formatCurrency(minimumProjection.totalInterest)}</strong> in total interest.{' '}
+            Use the simulator below to see how paying more accelerates your payoff.
           </p>
         </div>
       )}
@@ -105,27 +115,29 @@ export function CreditCardPlanner({ account, transactions, formatCurrency }: Cre
       {/* Progress chart */}
       <Accordion type="single" collapsible defaultValue="progress">
         <AccordionItem value="progress">
-          <AccordionTrigger className="text-lg font-semibold">
+          <AccordionTrigger className="text-base font-semibold">
             Repayment Outlook
           </AccordionTrigger>
           <AccordionContent>
             <Card className="shadow-sm">
               <CardContent className="p-6">
-                <div className="flex justify-between items-center mb-6">
+                <div className="flex justify-between items-start mb-6">
                   <div>
-                    <div className="text-sm text-slate-500 mb-1">Paying minimums only</div>
-                    <div className="text-2xl font-bold">
+                    <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-1">
+                      Paying minimums only
+                    </div>
+                    <div className="text-2xl font-bold text-slate-800">
                       {minimumProjection
                         ? formatTimeRemaining(minimumProjection.monthsRemaining)
-                        : '—'}
-                      {' '}to pay off
+                        : '—'}{' '}
+                      to pay off
                     </div>
                   </div>
                   <Button
                     variant="outline"
                     size="sm"
                     onClick={() => setShowSimulator(true)}
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 shrink-0"
                   >
                     <Calculator className="w-4 h-4" />
                     Open Payoff Simulator
@@ -133,9 +145,12 @@ export function CreditCardPlanner({ account, transactions, formatCurrency }: Cre
                 </div>
 
                 {chartData.length > 0 && (
-                  <div className="h-[260px] mb-4">
+                  <div className="h-[260px] mb-6">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={chartData}>
+                      <AreaChart
+                        data={chartData}
+                        margin={{ top: 8, right: 16, left: 16, bottom: 8 }}
+                      >
                         <defs>
                           <linearGradient id="colorCC" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
@@ -143,10 +158,17 @@ export function CreditCardPlanner({ account, transactions, formatCurrency }: Cre
                           </linearGradient>
                         </defs>
                         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                        <XAxis dataKey="label" tick={{ fontSize: 12 }} stroke="#94a3b8" />
-                        <YAxis
-                          tick={{ fontSize: 12 }}
+                        <XAxis
+                          dataKey="label"
+                          tick={{ fontSize: 11 }}
                           stroke="#94a3b8"
+                          tickLine={false}
+                        />
+                        <YAxis
+                          tick={{ fontSize: 11 }}
+                          stroke="#94a3b8"
+                          tickLine={false}
+                          width={90}
                           tickFormatter={(v) => formatCurrency(v)}
                         />
                         <Tooltip
@@ -154,9 +176,9 @@ export function CreditCardPlanner({ account, transactions, formatCurrency }: Cre
                             backgroundColor: '#fff',
                             border: '1px solid #e2e8f0',
                             borderRadius: '6px',
-                            fontSize: '14px',
+                            fontSize: '13px',
                           }}
-                          formatter={(value: number) => formatCurrency(value)}
+                          formatter={(value: number) => [formatCurrency(value), 'Balance']}
                         />
                         <Area
                           type="monotone"
@@ -172,16 +194,20 @@ export function CreditCardPlanner({ account, transactions, formatCurrency }: Cre
                 )}
 
                 {minimumProjection && (
-                  <div className="grid grid-cols-2 gap-4 mt-2">
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="bg-slate-50 rounded-lg p-4">
-                      <div className="text-sm text-slate-500">Total Interest</div>
-                      <div className="text-xl font-semibold text-slate-700 mt-1">
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                        Total Interest
+                      </div>
+                      <div className="text-xl font-bold text-red-600">
                         {formatCurrency(minimumProjection.totalInterest)}
                       </div>
                     </div>
                     <div className="bg-slate-50 rounded-lg p-4">
-                      <div className="text-sm text-slate-500">Total Paid</div>
-                      <div className="text-xl font-semibold text-slate-700 mt-1">
+                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                        Total Paid
+                      </div>
+                      <div className="text-xl font-bold text-slate-800">
                         {formatCurrency(minimumProjection.totalPaid)}
                       </div>
                     </div>
@@ -196,7 +222,7 @@ export function CreditCardPlanner({ account, transactions, formatCurrency }: Cre
       {/* Transaction history */}
       <Accordion type="single" collapsible>
         <AccordionItem value="transactions">
-          <AccordionTrigger className="text-lg font-semibold">
+          <AccordionTrigger className="text-base font-semibold">
             Transaction History ({transactions.length})
           </AccordionTrigger>
           <AccordionContent>
@@ -205,15 +231,15 @@ export function CreditCardPlanner({ account, transactions, formatCurrency }: Cre
                 {transactions.length === 0 ? (
                   <p className="text-slate-500 text-center py-4">No transactions yet</p>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="divide-y divide-slate-100">
                     {transactions.slice(0, 10).map((tx) => (
                       <div
                         key={tx.id}
-                        className="flex justify-between items-center py-2 border-b last:border-0"
+                        className="flex justify-between items-center py-3"
                       >
                         <div>
                           <div className="font-medium text-slate-700">{tx.payee}</div>
-                          <div className="text-sm text-slate-500">{tx.date}</div>
+                          <div className="text-xs text-slate-500 mt-0.5">{tx.date}</div>
                         </div>
                         <div
                           className={`font-semibold ${
@@ -225,7 +251,7 @@ export function CreditCardPlanner({ account, transactions, formatCurrency }: Cre
                       </div>
                     ))}
                     {transactions.length > 10 && (
-                      <p className="text-sm text-slate-500 text-center pt-2">
+                      <p className="text-sm text-slate-500 text-center pt-3">
                         And {transactions.length - 10} more transactions…
                       </p>
                     )}
