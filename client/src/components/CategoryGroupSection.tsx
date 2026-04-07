@@ -30,6 +30,7 @@ interface CategoryGroupSectionProps {
     activity: number;
     available: number;
   };
+  onDeleteCategory: (categoryId: string) => void;
 }
 
 export function CategoryGroupSection({
@@ -47,7 +48,8 @@ export function CategoryGroupSection({
   setCategoryAssignment,
   setCategoryGoal,
   formatCurrency,
-  groupSubtotals
+  groupSubtotals,
+  onDeleteCategory
 }: CategoryGroupSectionProps) {
   // Make group header a drop zone for dragging categories
   const { setNodeRef: setDropRef, isOver } = useDroppable({
@@ -148,6 +150,7 @@ export function CategoryGroupSection({
           setCategoryAssignment={setCategoryAssignment}
           setCategoryGoal={setCategoryGoal}
           formatCurrency={formatCurrency}
+          onDeleteCategory={onDeleteCategory}
         />
       ))}
     </div>
@@ -165,6 +168,7 @@ interface CategoryRowProps {
   setCategoryAssignment: (month: string, categoryId: string, amount: number) => void;
   setCategoryGoal: (categoryId: string, goal: number) => void;
   formatCurrency: (amount: number) => string;
+  onDeleteCategory: (categoryId: string) => void;
 }
 
 function CategoryRow({
@@ -177,7 +181,8 @@ function CategoryRow({
   getCategoryAvailable,
   setCategoryAssignment,
   setCategoryGoal,
-  formatCurrency
+  formatCurrency,
+  onDeleteCategory
 }: CategoryRowProps) {
   const assigned = monthlyAssignments[currentBudgetId]?.[currentMonth]?.[category.id] || 0;
   const activity = getCategoryActivity(currentMonth, category.id);
@@ -301,6 +306,14 @@ function CategoryRow({
             </Button>
           }
         />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600"
+          onClick={() => onDeleteCategory(category.id)}
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </Button>
       </div>
     </div>
   );

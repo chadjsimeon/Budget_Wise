@@ -73,7 +73,9 @@ export default function BudgetPage() {
     budgetTemplates,
     saveCurrentAsTemplate,
     applyBudgetTemplate,
-    deleteCategoryGroup
+    deleteCategoryGroup,
+    deleteCategory,
+    transactions: allTransactions,
   } = useStore();
 
   const budgetAccounts = allAccounts.filter(
@@ -96,9 +98,13 @@ export default function BudgetPage() {
   const [editingGroup, setEditingGroup] = useState<typeof categoryGroups[0] | null>(null);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
-  // State for delete confirmation
+  // State for delete group confirmation
   const [deletingGroup, setDeletingGroup] = useState<typeof categoryGroups[0] | null>(null);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  // State for delete category confirmation
+  const [deletingCategory, setDeletingCategory] = useState<typeof categories[0] | null>(null);
+  const [isDeleteCategoryDialogOpen, setIsDeleteCategoryDialogOpen] = useState(false);
 
   // State for template dialogs
   const [isSaveTemplateOpen, setIsSaveTemplateOpen] = useState(false);
@@ -192,6 +198,39 @@ export default function BudgetPage() {
       });
       setDeletingGroup(null);
       setIsDeleteDialogOpen(false);
+    }
+  };
+
+  const handleDeleteCategory = (categoryId: string) => {
+    const category = categories.find(c => c.id === categoryId);
+    if (!category) return;
+
+    const hasTransactions = allTransactions.some(
+      t => t.categoryId === categoryId && t.budgetId === currentBudgetId
+    );
+    const budgetAssignments = monthlyAssignments[currentBudgetId] || {};
+    const hasAssignments = Object.values(budgetAssignments).some(
+      (monthData: Record<string, number>) => (monthData[categoryId] || 0) !== 0
+    );
+
+    if (!hasTransactions && !hasAssignments) {
+      deleteCategory(categoryId);
+      toast({ title: "Category deleted", description: `"${category.name}" has been removed` });
+    } else {
+      setDeletingCategory(category);
+      setIsDeleteCategoryDialogOpen(true);
+    }
+  };
+
+  const confirmDeleteCategory = () => {
+    if (deletingCategory) {
+      deleteCategory(deletingCategory.id);
+      toast({
+        title: "Category deleted",
+        description: `"${deletingCategory.name}" has been removed`,
+      });
+      setDeletingCategory(null);
+      setIsDeleteCategoryDialogOpen(false);
     }
   };
 
@@ -595,6 +634,7 @@ export default function BudgetPage() {
                   setCategoryGoal={setCategoryGoal}
                   formatCurrency={formatCurrency}
                   groupSubtotals={subtotals}
+                  onDeleteCategory={handleDeleteCategory}
                 />
               );
             })}
@@ -724,6 +764,31 @@ export default function BudgetPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmDeleteGroup}
+              className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Category Confirmation Dialog */}
+      <AlertDialog open={isDeleteCategoryDialogOpen} onOpenChange={setIsDeleteCategoryDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Category?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {deletingCategory && (
+                <>
+                  "{deletingCategory.name}" has existing transactions or assigned amounts. Deleting it will remove all assignments and unlink any transactions from this category. This action cannot be undone.
+                </>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmDeleteCategory}
               className="bg-red-600 hover:bg-red-700 focus:ring-red-600"
             >
               Delete
