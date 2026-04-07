@@ -49,7 +49,7 @@ export function CreditCardPlanner({ account, transactions, formatCurrency }: Cre
 
   const interestRate = account.interestRate || 25;
   const balance = Math.abs(account.balance);
-  const minPayment = calcCreditCardMinPayment(account.balance);
+  const minPayment = calcCreditCardMinPayment(account.balance, interestRate);
 
   // Full minimum-payment-only trajectory
   const minimumProjection = useMemo(() => {

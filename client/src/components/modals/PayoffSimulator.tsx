@@ -36,7 +36,7 @@ interface PayoffSimulatorProps {
 
 function getInitialPayment(account: Account): number {
   if (account.type === 'credit') {
-    return calcCreditCardMinPayment(account.balance);
+    return calcCreditCardMinPayment(account.balance, account.interestRate || 25);
   }
   return account.monthlyPayment || 0;
 }
@@ -83,7 +83,7 @@ export function PayoffSimulator({
 
   // "Minimum payment" label in the left panel
   const minimumPaymentLabel = isCreditCard
-    ? calcCreditCardMinPayment(account.balance)
+    ? calcCreditCardMinPayment(account.balance, interestRate)
     : account.monthlyPayment || 0;
 
   // Inline validation message (never crashes the UI)

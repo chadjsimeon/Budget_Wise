@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useRoute } from 'wouter';
 import { useStore } from '@/lib/store';
 import { useCurrencyFormatter } from '@/lib/currency';
@@ -48,7 +48,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import { LoanPayoffPlanner } from '@/components/LoanPayoffPlanner';
 import { CreditCardPlanner } from '@/components/CreditCardPlanner';
-import { calculatePaymentBreakdown, calcCreditCardMinPayment } from '@/lib/loanCalculations';
+import { calculatePaymentBreakdown, calcCreditCardMinPayment, calculateAmortization, formatPayoffDate } from '@/lib/loanCalculations';
 import { useToast } from '@/hooks/use-toast';
 import {
   DropdownMenu,
@@ -147,6 +147,17 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
   const [deletingTxId, setDeletingTxId] = useState<string | null>(null);
   const [deletingAccountId, setDeletingAccountId] = useState<string | null>(null);
   const [showCCPlanner, setShowCCPlanner] = useState(false);
+
+  // Credit card payoff projection — based on fixed minimum payment (interest + $0.01)
+  const ccPayoffProjection = useMemo(() => {
+    if (currentAccount?.type !== 'credit' || !currentAccount.interestRate || !currentAccount.balance) return null;
+    try {
+      const minPay = calcCreditCardMinPayment(currentAccount.balance, currentAccount.interestRate);
+      return calculateAmortization(currentAccount.balance, currentAccount.interestRate, minPay);
+    } catch {
+      return null;
+    }
+  }, [currentAccount?.type, currentAccount?.balance, currentAccount?.interestRate]);
   const [editingAccount, setEditingAccount] = useState<typeof currentAccount | null>(null);
   const [isEditAccountOpen, setIsEditAccountOpen] = useState(false);
   const [newTx, setNewTx] = useState({
@@ -791,12 +802,22 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
                   </span>
                 </div>
               )}
-              <div>
-                <span className="text-slate-500">Est. Min Payment</span>
-                <span className="ml-2 font-semibold text-slate-800">
-                  {formatCurrency(calcCreditCardMinPayment(currentAccount.balance))}
-                </span>
-              </div>
+              {currentAccount.interestRate != null && (
+                <div>
+                  <span className="text-slate-500">Est. Min Payment</span>
+                  <span className="ml-2 font-semibold text-slate-800">
+                    {formatCurrency(calcCreditCardMinPayment(currentAccount.balance, currentAccount.interestRate))}
+                  </span>
+                </div>
+              )}
+              {ccPayoffProjection && (
+                <div>
+                  <span className="text-slate-500">Payoff Date</span>
+                  <span className="ml-2 font-semibold text-slate-800">
+                    {formatPayoffDate(ccPayoffProjection.payoffDate)}
+                  </span>
+                </div>
+              )}
               <Button
                 variant="outline"
                 size="sm"
