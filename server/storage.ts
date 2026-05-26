@@ -10,6 +10,7 @@ import {
   transactions,
   monthlyAssignments,
   budgetTemplates,
+  billReminders,
 } from "@shared/schema";
 import { eq, and, gt } from "drizzle-orm";
 import { db } from "./db";
@@ -125,6 +126,26 @@ export interface IStorage {
   }): Promise<void>;
   updateBudgetTemplate(id: string, userId: string, data: Record<string, unknown>): Promise<void>;
   deleteBudgetTemplate(id: string, userId: string): Promise<void>;
+
+  // Bill Reminders
+  createBillReminder(data: {
+    id: string;
+    budgetId: string;
+    name: string;
+    amount: number;
+    frequency: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
+    dueDay: number;
+    dueDateOverride?: string;
+    categoryId?: string;
+    accountId?: string;
+    isActive: boolean;
+    autoCreateTransaction: boolean;
+    reminderDaysBefore: number;
+    lastPaidDate?: string;
+    notes?: string;
+  }): Promise<void>;
+  updateBillReminder(id: string, budgetId: string, data: Record<string, unknown>): Promise<void>;
+  deleteBillReminder(id: string, budgetId: string): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -432,6 +453,55 @@ export class DbStorage implements IStorage {
   async deleteBudgetTemplate(id: string, userId: string): Promise<void> {
     await db.delete(budgetTemplates)
       .where(and(eq(budgetTemplates.id, id), eq(budgetTemplates.userId, userId)));
+  }
+  // ============= BILL REMINDERS =============
+  async createBillReminder(data: {
+    id: string;
+    budgetId: string;
+    name: string;
+    amount: number;
+    frequency: "weekly" | "biweekly" | "monthly" | "quarterly" | "yearly";
+    dueDay: number;
+    dueDateOverride?: string;
+    categoryId?: string;
+    accountId?: string;
+    isActive: boolean;
+    autoCreateTransaction: boolean;
+    reminderDaysBefore: number;
+    lastPaidDate?: string;
+    notes?: string;
+  }): Promise<void> {
+    await db.insert(billReminders).values({
+      id: data.id,
+      budgetId: data.budgetId,
+      name: data.name,
+      amount: String(data.amount),
+      frequency: data.frequency,
+      dueDay: String(data.dueDay),
+      dueDateOverride: data.dueDateOverride ?? null,
+      categoryId: data.categoryId ?? null,
+      accountId: data.accountId ?? null,
+      isActive: data.isActive,
+      autoCreateTransaction: data.autoCreateTransaction,
+      reminderDaysBefore: String(data.reminderDaysBefore),
+      lastPaidDate: data.lastPaidDate ?? null,
+      notes: data.notes ?? null,
+    });
+  }
+
+  async updateBillReminder(id: string, budgetId: string, data: Record<string, unknown>): Promise<void> {
+    const dbData: Record<string, unknown> = { ...data };
+    if (typeof dbData.amount === 'number') dbData.amount = String(dbData.amount);
+    if (typeof dbData.dueDay === 'number') dbData.dueDay = String(dbData.dueDay);
+    if (typeof dbData.reminderDaysBefore === 'number') dbData.reminderDaysBefore = String(dbData.reminderDaysBefore);
+    await db.update(billReminders)
+      .set(dbData as any)
+      .where(and(eq(billReminders.id, id), eq(billReminders.budgetId, budgetId)));
+  }
+
+  async deleteBillReminder(id: string, budgetId: string): Promise<void> {
+    await db.delete(billReminders)
+      .where(and(eq(billReminders.id, id), eq(billReminders.budgetId, budgetId)));
   }
 }
 

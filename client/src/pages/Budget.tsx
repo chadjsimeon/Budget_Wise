@@ -49,6 +49,7 @@ import { MoveMoneyDialog } from '@/components/modals/MoveMoneyDialog';
 import { CreateCategoryDialog } from '@/components/modals/CreateCategoryDialog';
 import { CreateCategoryGroupDialog } from '@/components/modals/CreateCategoryGroupDialog';
 import { CategoryGroupSection } from '@/components/CategoryGroupSection';
+import { BillRemindersPanel } from '@/components/BillRemindersPanel';
 
 type FilterType = 'all' | 'underfunded' | 'overfunded' | 'available';
 
@@ -476,6 +477,9 @@ export default function BudgetPage() {
         {/* Categories Content */}
         <div className="flex-1 overflow-auto bg-white">
           <div className="max-w-5xl mx-auto">
+            {/* Bill Reminders */}
+            <BillRemindersPanel />
+
             {/* Table Header */}
             <div className="sticky top-0 bg-slate-50 border-b border-slate-200 grid grid-cols-[1fr_100px_100px] md:grid-cols-[1fr_140px_140px_140px_140px] gap-2 md:gap-4 px-4 md:px-6 py-3">
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Category</div>

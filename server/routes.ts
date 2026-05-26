@@ -14,6 +14,7 @@ import {
   transactions,
   monthlyAssignments,
   budgetTemplates,
+  billReminders,
 } from "@shared/schema";
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -203,6 +204,7 @@ export async function registerRoutes(
           transactions: [],
           monthlyAssignments: {},
           budgetTemplates: [],
+          billReminders: [],
         });
       }
 
@@ -216,6 +218,7 @@ export async function registerRoutes(
         userTransactions,
         userMonthlyAssignments,
         userBudgetTemplates,
+        userBillReminders,
       ] = await Promise.all([
         db.select().from(accounts).where(inArray(accounts.budgetId, budgetIds)),
         db.select().from(trackingAccounts).where(eq(trackingAccounts.userId, userId)),
@@ -224,6 +227,7 @@ export async function registerRoutes(
         db.select().from(transactions).where(inArray(transactions.budgetId, budgetIds)),
         db.select().from(monthlyAssignments).where(inArray(monthlyAssignments.budgetId, budgetIds)),
         db.select().from(budgetTemplates).where(eq(budgetTemplates.userId, userId)),
+        db.select().from(billReminders).where(inArray(billReminders.budgetId, budgetIds)),
       ]);
 
       const assignmentsMap: Record<string, Record<string, Record<string, number>>> = {};
@@ -295,6 +299,23 @@ export async function registerRoutes(
           isDefault: bt.isDefault,
           goals: bt.goals as Record<string, number>,
           createdAt: bt.createdAt,
+        })),
+        billReminders: userBillReminders.map((br) => ({
+          id: br.id,
+          budgetId: br.budgetId,
+          name: br.name,
+          amount: parseFloat(br.amount),
+          frequency: br.frequency,
+          dueDay: parseInt(br.dueDay),
+          dueDateOverride: br.dueDateOverride ?? undefined,
+          categoryId: br.categoryId ?? undefined,
+          accountId: br.accountId ?? undefined,
+          isActive: br.isActive,
+          autoCreateTransaction: br.autoCreateTransaction,
+          reminderDaysBefore: parseInt(br.reminderDaysBefore),
+          lastPaidDate: br.lastPaidDate ?? undefined,
+          notes: br.notes ?? undefined,
+          createdAt: br.createdAt,
         })),
       });
     } catch (error) {
@@ -675,6 +696,49 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       await storage.deleteBudgetTemplate(req.params.id, userId);
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // ============= BILL REMINDERS =============
+  app.post("/api/bill-reminders", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const { budgetId, ...data } = req.body;
+      if (!await verifyBudgetOwnership(userId, budgetId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.createBillReminder({ ...data, budgetId });
+      res.status(201).json({ id: data.id });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.patch("/api/bill-reminders/:id", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const { budgetId, ...updates } = req.body;
+      if (!await verifyBudgetOwnership(userId, budgetId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.updateBillReminder(req.params.id, budgetId, updates);
+      res.json({ ok: true });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  app.delete("/api/bill-reminders/:id", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const { budgetId } = req.body;
+      if (!await verifyBudgetOwnership(userId, budgetId)) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+      await storage.deleteBillReminder(req.params.id, budgetId);
       res.json({ ok: true });
     } catch (error) {
       next(error);
