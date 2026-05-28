@@ -1,30 +1,11 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { format } from 'date-fns';
-import { apiRequest } from '@/lib/queryClient';
 import { toast } from '@/hooks/use-toast';
+import { syncToServer } from '@/lib/syncQueue';
 import { calculatePaymentBreakdown } from '@/lib/loanCalculations';
 import type { BillReminder, BillFrequency, UpcomingBill } from '@/lib/billUtils';
 import { getUpcomingBills as computeUpcomingBills } from '@/lib/billUtils';
-
-let syncErrorShown = false;
-
-async function syncToServer(method: string, url: string, data?: unknown) {
-  try {
-    await apiRequest(method, url, data);
-    syncErrorShown = false;
-  } catch (err) {
-    console.error(`[sync] ${method} ${url} failed:`, err);
-    if (!syncErrorShown) {
-      syncErrorShown = true;
-      toast({
-        title: "Sync failed",
-        description: "Your changes couldn't be saved to the server. Please check your connection.",
-        variant: "destructive",
-      });
-    }
-  }
-}
 
 export type AccountType = 'checking' | 'savings' | 'cash' | 'credit' | 'loan';
 export type TrackingAccountType = 'asset' | 'liability';

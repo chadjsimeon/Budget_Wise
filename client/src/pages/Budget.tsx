@@ -112,6 +112,7 @@ export default function BudgetPage() {
   const [templateName, setTemplateName] = useState('');
   const [templateIsDefault, setTemplateIsDefault] = useState(false);
   const [isLoadTemplateOpen, setIsLoadTemplateOpen] = useState(false);
+  const [showMobileSummary, setShowMobileSummary] = useState(false);
 
   const toggleGroup = (groupId: string) => {
     setExpandedGroups(prev => ({ ...prev, [groupId]: !prev[groupId] }));
@@ -558,6 +559,58 @@ export default function BudgetPage() {
 
             {/* Bill Reminders */}
             <BillRemindersPanel />
+
+            {/* Month Summary (mobile/tablet only — desktop uses the right sidebar) */}
+            <div className="lg:hidden border-b border-slate-200">
+              <button
+                onClick={() => setShowMobileSummary(!showMobileSummary)}
+                className="w-full px-4 py-3 flex items-center justify-between hover:bg-slate-50 transition-colors"
+              >
+                <span className="text-sm font-semibold text-slate-700">
+                  {format(parse(currentMonth, 'yyyy-MM', new Date()), 'MMMM')}'s Summary
+                </span>
+                {showMobileSummary ? (
+                  <ChevronUp className="w-4 h-4 text-slate-400" />
+                ) : (
+                  <ChevronDown className="w-4 h-4 text-slate-400" />
+                )}
+              </button>
+              {showMobileSummary && (
+                <div className="px-4 pb-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <div className="text-xs text-slate-500 mb-1">Left Over</div>
+                      <div className="text-lg font-bold text-slate-900">{formatCurrency(leftOverFromLastMonth)}</div>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <div className="text-xs text-slate-500 mb-1">Assigned</div>
+                      <div className="text-lg font-bold text-slate-900">{formatCurrency(monthSummary.assigned)}</div>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <div className="text-xs text-slate-500 mb-1">Activity</div>
+                      <div className="text-lg font-bold text-slate-900">{formatCurrency(monthSummary.activity)}</div>
+                    </div>
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <div className="text-xs text-slate-500 mb-1">Available</div>
+                      <div className={cn(
+                        "text-lg font-bold",
+                        monthSummary.available < 0 ? "text-red-600" : "text-slate-900"
+                      )}>
+                        {formatCurrency(monthSummary.available)}
+                      </div>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={handleAutoAssign}
+                    disabled={readyToAssign <= 0}
+                    className="w-full mt-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-semibold shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ⚡ Auto-Assign
+                    <ChevronRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </div>
+              )}
+            </div>
 
             {/* Table Header */}
             <div className="sticky top-0 bg-slate-50 border-b border-slate-200 grid grid-cols-[1fr_100px_100px] md:grid-cols-[1fr_140px_140px_140px_140px] gap-2 md:gap-4 px-4 md:px-6 py-3">

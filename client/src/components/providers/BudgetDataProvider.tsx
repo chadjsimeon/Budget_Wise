@@ -13,6 +13,7 @@ export function BudgetDataProvider({ children }: BudgetDataProviderProps) {
   const hasHydrated = useStore((state) => state._hasHydrated);
   const addBudget = useStore((state) => state.addBudget);
   const seedDefaultCategories = useStore((state) => state.seedDefaultCategories);
+  const hasLocalData = useStore((state) => state.budgets.length > 0);
 
   // Reset hydration flag on mount so fresh server data is always fetched
   useEffect(() => {
@@ -40,6 +41,12 @@ export function BudgetDataProvider({ children }: BudgetDataProviderProps) {
       }
     }
   }, [data, hasHydrated, hydrateFromServer, addBudget, seedDefaultCategories]);
+
+  // If the server is unreachable (offline) but we already have data persisted
+  // locally, fall back to it instead of blocking the whole app.
+  if (error && hasLocalData) {
+    return <>{children}</>;
+  }
 
   if (error) {
     return (

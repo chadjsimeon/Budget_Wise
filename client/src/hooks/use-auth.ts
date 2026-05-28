@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, getQueryFn } from "@/lib/queryClient";
 import { useStore } from "@/lib/store";
@@ -12,6 +13,29 @@ interface Credentials {
   password: string;
 }
 
+// Persisted identity used only to keep a previously-authenticated user signed in
+// while offline. The server still enforces auth on every request; this only
+// affects client-side routing so the app can open from cached/local data.
+const LAST_USER_KEY = "bw-last-user";
+
+function readLastUser(): User | null {
+  try {
+    const raw = localStorage.getItem(LAST_USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeLastUser(user: User | null) {
+  try {
+    if (user) localStorage.setItem(LAST_USER_KEY, JSON.stringify(user));
+    else localStorage.removeItem(LAST_USER_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function useAuth() {
   const queryClient = useQueryClient();
 
@@ -21,6 +45,19 @@ export function useAuth() {
     staleTime: Infinity,
     retry: false,
   });
+
+  // Record the identity on a definitive response: persist on a real user, clear
+  // on a confirmed 401 (user === null). A network error leaves user undefined,
+  // in which case we keep the last-known identity for offline pass-through.
+  useEffect(() => {
+    if (user) writeLastUser(user);
+    else if (user === null) writeLastUser(null);
+  }, [user]);
+
+  // Offline fallback: the auth check failed with a network/server error (not a
+  // 401, which resolves to null without an error) but we have a cached identity.
+  const cachedUser = user === undefined && error ? readLastUser() : null;
+  const effectiveUser = user ?? cachedUser;
 
   const loginMutation = useMutation({
     mutationFn: async (credentials: Credentials) => {
@@ -63,14 +100,15 @@ export function useAuth() {
     onSuccess: () => {
       queryClient.removeQueries({ queryKey: ["/api/budget-data"] });
       queryClient.setQueryData(["/api/auth/user"], null);
+      writeLastUser(null);
       useStore.getState().clearState();
     },
   });
 
   return {
-    user,
+    user: effectiveUser,
     isLoading,
-    isAuthenticated: !!user,
+    isAuthenticated: !!effectiveUser,
     login: loginMutation.mutateAsync,
     register: registerMutation.mutateAsync,
     forgotPassword: forgotPasswordMutation.mutateAsync,

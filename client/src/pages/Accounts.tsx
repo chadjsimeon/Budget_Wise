@@ -50,6 +50,7 @@ import { LoanPayoffPlanner } from '@/components/LoanPayoffPlanner';
 import { CreditCardPlanner } from '@/components/CreditCardPlanner';
 import { calculatePaymentBreakdown, calcCreditCardMinPayment, calculateAmortization, formatPayoffDate } from '@/lib/loanCalculations';
 import { useToast } from '@/hooks/use-toast';
+import { useIsMobile } from '@/hooks/use-mobile';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -172,6 +173,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
   });
 
   const { toast } = useToast();
+  const isMobile = useIsMobile();
 
   // Bulk Selection State
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
@@ -844,6 +846,105 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
               </DialogContent>
             </Dialog>
           )}
+          {isMobile ? (
+            <div className="px-3 py-3 space-y-2">
+              {accountTransactions.length === 0 ? (
+                <div className="h-24 flex items-center justify-center text-center text-slate-500">
+                  No transactions found. Start spending!
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between px-1 pb-1">
+                    <label className="flex items-center gap-2 text-sm text-slate-500">
+                      <Checkbox
+                        checked={accountTransactions.length > 0 && selectedTxIds.size === accountTransactions.length}
+                        onCheckedChange={handleSelectAll}
+                      />
+                      Select all
+                    </label>
+                    <div className="flex items-center gap-1">
+                      <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-500" onClick={() => handleSort('date')}>
+                        Date <SortIcon field="date" />
+                      </Button>
+                      <Button variant="ghost" size="sm" className="h-8 px-2 text-slate-500" onClick={() => handleSort('amount')}>
+                        Amount <SortIcon field="amount" />
+                      </Button>
+                    </div>
+                  </div>
+                  {accountTransactions.map(t => {
+                    const category = categories.find(c => c.id === t.categoryId);
+                    const isSelected = selectedTxIds.has(t.id);
+                    return (
+                      <div
+                        key={t.id}
+                        className={cn(
+                          "rounded-lg border border-slate-200 p-3 flex gap-3",
+                          isSelected && "bg-blue-50 border-blue-200"
+                        )}
+                      >
+                        <Checkbox
+                          className="mt-1 shrink-0"
+                          checked={isSelected}
+                          onCheckedChange={(checked) => handleSelectTransaction(t.id, checked === true)}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <div className="font-semibold text-slate-700 flex items-center gap-2 flex-wrap">
+                                <span className="truncate">{t.payee}</span>
+                                {t.isOpeningBalance && (
+                                  <Badge variant="outline" className="text-xs">Opening Balance</Badge>
+                                )}
+                              </div>
+                              <div className="text-xs text-slate-500 mt-0.5">
+                                {format(parse(t.date, 'yyyy-MM-dd', new Date()), 'MMM dd, yyyy')}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 shrink-0">
+                              <span className={cn(
+                                "font-semibold tabular-nums",
+                                t.amount > 0 ? "text-green-600" : "text-slate-900"
+                              )}>
+                                {t.amount > 0 ? formatCurrency(t.amount) : formatCurrency(Math.abs(t.amount))}
+                              </span>
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-600">
+                                    <MoreHorizontal className="w-4 h-4" />
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                  <DropdownMenuItem onClick={() => handleEditTransaction(t)} className="cursor-pointer">
+                                    <Pencil className="w-4 h-4 mr-2" />
+                                    Edit
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem
+                                    onClick={() => handleDeleteTransaction(t.id)}
+                                    className="cursor-pointer text-red-600 focus:text-red-600"
+                                  >
+                                    <Trash2 className="w-4 h-4 mr-2" />
+                                    Delete
+                                  </DropdownMenuItem>
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            </div>
+                          </div>
+                          <div className="flex items-center justify-between gap-2 mt-2">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-50 text-blue-700 truncate">
+                              {category ? category.name : (t.amount > 0 ? "Inflow: Ready to Assign" : "Uncategorized")}
+                            </span>
+                            {t.memo && (
+                              <span className="text-xs text-slate-500 truncate max-w-[50%]">{t.memo}</span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+            </div>
+          ) : (
           <Table>
           <TableHeader>
             <TableRow>
@@ -958,6 +1059,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
             )}
           </TableBody>
         </Table>
+          )}
         </div>
       )}
 
