@@ -49,6 +49,14 @@ export const dateFormatEnum = pgEnum("date_format", [
   "YYYY-MM-DD",
 ]);
 
+export const billFrequencyEnum = pgEnum("bill_frequency", [
+  "weekly",
+  "biweekly",
+  "monthly",
+  "quarterly",
+  "yearly",
+]);
+
 // ============================================================================
 // USERS TABLE
 // ============================================================================
@@ -213,6 +221,33 @@ export const monthlyAssignments = pgTable("monthly_assignments", {
 }));
 
 // ============================================================================
+// BILL REMINDERS
+// ============================================================================
+
+export const billReminders = pgTable("bill_reminders", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  budgetId: varchar("budget_id", { length: 36 }).notNull()
+    .references(() => budgets.id, { onDelete: 'cascade' }),
+  name: text("name").notNull(),
+  amount: numeric("amount", { precision: 15, scale: 2 }).notNull(),
+  frequency: billFrequencyEnum("frequency").notNull(),
+  dueDay: numeric("due_day").notNull(), // 1-31 for monthly, 0-6 for weekly
+  dueDateOverride: varchar("due_date_override", { length: 10 }), // "YYYY-MM-DD"
+  categoryId: varchar("category_id", { length: 36 })
+    .references(() => categories.id, { onDelete: 'set null' }),
+  accountId: varchar("account_id", { length: 36 })
+    .references(() => accounts.id, { onDelete: 'set null' }),
+  isActive: boolean("is_active").notNull().default(true),
+  autoCreateTransaction: boolean("auto_create_transaction").notNull().default(false),
+  reminderDaysBefore: numeric("reminder_days_before").notNull().default('3'),
+  lastPaidDate: varchar("last_paid_date", { length: 10 }),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  budgetIdIdx: index("bill_reminders_budget_id_idx").on(table.budgetId),
+}));
+
+// ============================================================================
 // DRIZZLE RELATIONS (for query building)
 // ============================================================================
 
@@ -223,6 +258,7 @@ export const budgetsRelations = relations(budgets, ({ one, many }) => ({
   categories: many(categories),
   transactions: many(transactions),
   monthlyAssignments: many(monthlyAssignments),
+  billReminders: many(billReminders),
 }));
 
 export const trackingAccountsRelations = relations(trackingAccounts, ({ one }) => ({
@@ -259,6 +295,12 @@ export const transactionsRelations = relations(transactions, ({ one }) => ({
 export const monthlyAssignmentsRelations = relations(monthlyAssignments, ({ one }) => ({
   budget: one(budgets, { fields: [monthlyAssignments.budgetId], references: [budgets.id] }),
   category: one(categories, { fields: [monthlyAssignments.categoryId], references: [categories.id] }),
+}));
+
+export const billRemindersRelations = relations(billReminders, ({ one }) => ({
+  budget: one(budgets, { fields: [billReminders.budgetId], references: [budgets.id] }),
+  category: one(categories, { fields: [billReminders.categoryId], references: [categories.id] }),
+  account: one(accounts, { fields: [billReminders.accountId], references: [accounts.id] }),
 }));
 
 // ============================================================================
@@ -318,6 +360,18 @@ export const insertAssetSchema = createInsertSchema(assets, {
   value: z.number(),
 }).omit({ id: true });
 
+export const insertBillReminderSchema = createInsertSchema(billReminders, {
+  frequency: z.enum(['weekly', 'biweekly', 'monthly', 'quarterly', 'yearly']),
+  amount: z.number(),
+  dueDay: z.number(),
+  reminderDaysBefore: z.number().optional(),
+  dueDateOverride: z.string().optional(),
+  categoryId: z.string().optional(),
+  accountId: z.string().optional(),
+  lastPaidDate: z.string().optional(),
+  notes: z.string().optional(),
+}).omit({ id: true, createdAt: true });
+
 // ============================================================================
 // TYPE EXPORTS
 // ============================================================================
@@ -332,6 +386,7 @@ export type Transaction = typeof transactions.$inferSelect;
 export type MonthlyAssignment = typeof monthlyAssignments.$inferSelect;
 export type BudgetTemplate = typeof budgetTemplates.$inferSelect;
 export type Asset = typeof assets.$inferSelect;
+export type BillReminderRow = typeof billReminders.$inferSelect;
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type InsertBudget = z.infer<typeof insertBudgetSchema>;
@@ -343,3 +398,4 @@ export type InsertTransaction = z.infer<typeof insertTransactionSchema>;
 export type InsertMonthlyAssignment = z.infer<typeof insertMonthlyAssignmentSchema>;
 export type InsertBudgetTemplate = z.infer<typeof insertBudgetTemplateSchema>;
 export type InsertAsset = z.infer<typeof insertAssetSchema>;
+export type InsertBillReminder = z.infer<typeof insertBillReminderSchema>;

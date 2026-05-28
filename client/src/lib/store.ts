@@ -4,6 +4,8 @@ import { format } from 'date-fns';
 import { apiRequest } from '@/lib/queryClient';
 import { toast } from '@/hooks/use-toast';
 import { calculatePaymentBreakdown } from '@/lib/loanCalculations';
+import type { BillReminder, BillFrequency, UpcomingBill } from '@/lib/billUtils';
+import { getUpcomingBills as computeUpcomingBills } from '@/lib/billUtils';
 
 let syncErrorShown = false;
 
@@ -119,6 +121,8 @@ export interface MonthlyAssignments {
   };
 }
 
+export type { BillReminder, BillFrequency, UpcomingBill };
+
 // Shape returned by GET /api/budget-data (dates are ISO strings over JSON)
 export interface ServerBudgetData {
   budgets: Array<Omit<Budget, 'createdAt'> & { createdAt: string }>;
@@ -130,6 +134,7 @@ export interface ServerBudgetData {
   transactions: Transaction[];
   monthlyAssignments: MonthlyAssignments;
   budgetTemplates: Array<Omit<BudgetTemplate, 'createdAt'> & { createdAt: string }>;
+  billReminders: Array<Omit<BillReminder, 'createdAt'> & { createdAt: string }>;
 }
 
 interface AppState {
@@ -143,6 +148,7 @@ interface AppState {
   transactions: Transaction[];
   monthlyAssignments: MonthlyAssignments;
   budgetTemplates: BudgetTemplate[];
+  billReminders: BillReminder[];
   currentMonth: string;
 
   // Budget Actions
@@ -193,6 +199,13 @@ interface AppState {
   deleteBudgetTemplate: (id: string) => void;
   applyBudgetTemplate: (templateId: string, month: string) => void;
   saveCurrentAsTemplate: (name: string, isDefault?: boolean) => void;
+
+  // Bill Reminders
+  addBillReminder: (reminder: Omit<BillReminder, 'id' | 'budgetId' | 'createdAt'>) => void;
+  updateBillReminder: (id: string, updates: Partial<BillReminder>) => void;
+  deleteBillReminder: (id: string) => void;
+  markBillPaid: (id: string, paidDate?: string) => void;
+  getUpcomingBills: (daysAhead?: number) => UpcomingBill[];
 
   // Getters
   getAccountBalance: (accountId: string) => number;
@@ -295,7 +308,7 @@ const DEFAULT_CATEGORY_STRUCTURE = [
 // Constant for auto-created loan category group
 const DEBT_REPAYMENTS_GROUP_NAME = 'Debt Repayments';
 
-const STORAGE_VERSION = 6; // Increment this to reset all data
+const STORAGE_VERSION = 7; // Increment this to reset all data
 
 export const useStore = create<AppState>()(
   persist(
@@ -310,6 +323,7 @@ export const useStore = create<AppState>()(
       transactions: INITIAL_TRANSACTIONS,
       monthlyAssignments: INITIAL_ASSIGNMENTS,
       budgetTemplates: [],
+      billReminders: [],
       currentMonth: format(new Date(), 'yyyy-MM'),
       helpModeEnabled: false,
       hasSeenWelcome: false,
@@ -392,6 +406,7 @@ export const useStore = create<AppState>()(
           categoryGroups: state.categoryGroups.filter(g => g.budgetId !== budgetId),
           categories: state.categories.filter(c => c.budgetId !== budgetId),
           transactions: state.transactions.filter(t => t.budgetId !== budgetId),
+          billReminders: state.billReminders.filter(r => r.budgetId !== budgetId),
           monthlyAssignments: remainingAssignments
         });
 
@@ -1274,6 +1289,94 @@ export const useStore = create<AppState>()(
         });
       },
 
+      // ============= BILL REMINDERS =============
+      addBillReminder: (reminder) => {
+        const budgetId = get().currentBudgetId;
+        const newReminder: BillReminder = {
+          ...reminder,
+          id: crypto.randomUUID(),
+          budgetId,
+          createdAt: new Date(),
+        };
+        set((state) => ({
+          billReminders: [...state.billReminders, newReminder],
+        }));
+        syncToServer("POST", "/api/bill-reminders", {
+          id: newReminder.id,
+          budgetId: newReminder.budgetId,
+          name: newReminder.name,
+          amount: newReminder.amount,
+          frequency: newReminder.frequency,
+          dueDay: newReminder.dueDay,
+          dueDateOverride: newReminder.dueDateOverride,
+          categoryId: newReminder.categoryId,
+          accountId: newReminder.accountId,
+          isActive: newReminder.isActive,
+          autoCreateTransaction: newReminder.autoCreateTransaction,
+          reminderDaysBefore: newReminder.reminderDaysBefore,
+          lastPaidDate: newReminder.lastPaidDate,
+          notes: newReminder.notes,
+        });
+      },
+
+      updateBillReminder: (id, updates) => {
+        set((state) => ({
+          billReminders: state.billReminders.map(r => r.id === id ? { ...r, ...updates } : r),
+        }));
+        const reminder = get().billReminders.find(r => r.id === id);
+        if (reminder) {
+          syncToServer("PATCH", `/api/bill-reminders/${id}`, { budgetId: reminder.budgetId, ...updates });
+        }
+      },
+
+      deleteBillReminder: (id) => {
+        const reminder = get().billReminders.find(r => r.id === id);
+        set((state) => ({
+          billReminders: state.billReminders.filter(r => r.id !== id),
+        }));
+        if (reminder) {
+          syncToServer("DELETE", `/api/bill-reminders/${id}`, { budgetId: reminder.budgetId });
+        }
+      },
+
+      markBillPaid: (id, paidDate) => {
+        const state = get();
+        const reminder = state.billReminders.find(r => r.id === id);
+        if (!reminder) return;
+
+        const dateStr = paidDate || format(new Date(), 'yyyy-MM-dd');
+
+        // Update lastPaidDate
+        set((s) => ({
+          billReminders: s.billReminders.map(r =>
+            r.id === id ? { ...r, lastPaidDate: dateStr } : r
+          ),
+        }));
+
+        // Auto-create transaction if enabled
+        if (reminder.autoCreateTransaction && reminder.accountId) {
+          get().addTransaction({
+            accountId: reminder.accountId,
+            date: dateStr,
+            payee: reminder.name,
+            amount: -Math.abs(reminder.amount),
+            categoryId: reminder.categoryId,
+            memo: `Bill payment: ${reminder.name}`,
+            cleared: false,
+          });
+        }
+
+        syncToServer("PATCH", `/api/bill-reminders/${id}`, {
+          budgetId: reminder.budgetId,
+          lastPaidDate: dateStr,
+        });
+      },
+
+      getUpcomingBills: (daysAhead = 14) => {
+        const state = get();
+        return computeUpcomingBills(state.billReminders, state.currentBudgetId, daysAhead);
+      },
+
       // ============= AUTH =============
       hydrateFromServer: (data) => {
         set({
@@ -1292,6 +1395,10 @@ export const useStore = create<AppState>()(
           budgetTemplates: data.budgetTemplates.map((t) => ({
             ...t,
             createdAt: new Date(t.createdAt),
+          })),
+          billReminders: (data.billReminders || []).map((r) => ({
+            ...r,
+            createdAt: new Date(r.createdAt),
           })),
           _hasHydrated: true,
         });
@@ -1316,6 +1423,7 @@ export const useStore = create<AppState>()(
           transactions: INITIAL_TRANSACTIONS,
           monthlyAssignments: INITIAL_ASSIGNMENTS,
           budgetTemplates: [],
+          billReminders: [],
           currentMonth: format(new Date(), 'yyyy-MM'),
           _hasHydrated: false,
         });
@@ -1397,6 +1505,7 @@ export const useStore = create<AppState>()(
         transactions: state.transactions,
         monthlyAssignments: state.monthlyAssignments,
         budgetTemplates: state.budgetTemplates,
+        billReminders: state.billReminders,
         currentMonth: state.currentMonth,
         helpModeEnabled: state.helpModeEnabled,
         hasSeenWelcome: state.hasSeenWelcome,
