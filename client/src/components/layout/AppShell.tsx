@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { Sidebar } from './Sidebar';
 import { Toaster } from '@/components/ui/toaster';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useOnlineStatus } from '@/hooks/use-online-status';
 import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Menu } from 'lucide-react';
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const isMobile = useIsMobile();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { isOnline, pendingSync } = useOnlineStatus();
 
   return (
     <div className="flex h-screen w-full bg-background overflow-hidden font-sans">
@@ -41,6 +44,31 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </div>
       </main>
+
+      {/* Connectivity / sync indicator */}
+      {(!isOnline || pendingSync > 0) && (
+        <div
+          className={cn(
+            "fixed bottom-4 left-1/2 -translate-x-1/2 z-50 px-3 py-1.5 rounded-full shadow-lg text-xs font-medium flex items-center gap-2",
+            isOnline
+              ? "bg-amber-100 text-amber-800 border border-amber-200"
+              : "bg-slate-800 text-white"
+          )}
+        >
+          {isOnline ? (
+            <>
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Syncing {pendingSync} change{pendingSync !== 1 ? 's' : ''}…
+            </>
+          ) : (
+            <>
+              <span className="w-2 h-2 rounded-full bg-red-400" />
+              Offline{pendingSync > 0 ? ` · ${pendingSync} pending` : ''}
+            </>
+          )}
+        </div>
+      )}
+
       <Toaster />
     </div>
   );
