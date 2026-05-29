@@ -12,11 +12,13 @@ export async function sendPasswordResetEmail(
   resetUrl: string
 ): Promise<void> {
   if (!resend) {
-    console.log(`[DEV] Password reset link for ${to}: ${resetUrl}`);
+    console.log(
+      `\n========================================\n[DEV] No RESEND_API_KEY configured — email not sent.\n[DEV] Password reset link for ${to}:\n${resetUrl}\n========================================\n`
+    );
     return;
   }
 
-  await resend.emails.send({
+  const { error } = await resend.emails.send({
     from: fromAddress,
     to,
     subject: "Reset your Budget Wise password",
@@ -32,4 +34,12 @@ export async function sendPasswordResetEmail(
       </div>
     `,
   });
+
+  // Resend reports delivery failures in the returned `error` object rather than
+  // throwing. Surface them so a broken email config produces a real error
+  // instead of a silent false success.
+  if (error) {
+    console.error(`[email] Failed to send password reset email to ${to}:`, error);
+    throw new Error(`Failed to send password reset email: ${error.message}`);
+  }
 }
