@@ -1,36 +1,19 @@
 #!/bin/sh
+set -e
 
-echo "=== Migration Start ==="
-echo "Checking migrations directory..."
-ls -la migrations/ 2>&1
+# Production boot script (referenced by Dockerfile CMD).
+#
+# SAFETY: This must NEVER destroy existing data. Do not add a loop that executes
+# raw migrations/*.sql at boot — that is how every deploy previously wiped the
+# database (a hand-written "clean slate" DROP TABLE migration ran on every start).
+#
+# Schema is kept in sync with `drizzle-kit push`, which only ADDS/ALTERS where the
+# live DB diverges from shared/schema.ts. It will not drop a table/column that is
+# still defined in the schema. Keep schema changes ADDITIVE; removing a column or
+# table from schema.ts can cause push --force to drop it, so such changes need an
+# explicit, reviewed migration instead.
 
-for f in migrations/*.sql; do
-  [ -f "$f" ] || continue
-  echo "=== Applying $f ==="
-  cat "$f"
-  echo "=== Executing ==="
-  node -e "
-    const { Pool } = require('pg');
-    const fs = require('fs');
-    async function run() {
-      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
-      try {
-        const sql = fs.readFileSync('$f', 'utf8');
-        const result = await pool.query(sql);
-        console.log('SUCCESS: Applied $f');
-      } catch (e) {
-        console.error('MIGRATION ERROR:', e.message);
-        console.error('Full error:', JSON.stringify(e));
-      } finally {
-        await pool.end();
-      }
-    }
-    run().then(() => process.exit(0)).catch((e) => { console.error('FATAL:', e); process.exit(1); });
-  "
-  echo "=== Done with $f ==="
-done
-
-echo "=== Running drizzle-kit push ==="
+echo "=== Syncing database schema (additive) ==="
 npx drizzle-kit push --force --verbose 2>&1 || echo "=== drizzle-kit push failed ==="
 
 echo "=== Starting server ==="
