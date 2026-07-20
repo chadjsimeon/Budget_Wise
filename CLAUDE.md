@@ -4,20 +4,22 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Budget-Wise is a zero-based budgeting application built with React, Express, and TypeScript. The application uses a full-stack architecture with client-side state management via Zustand and a prepared backend infrastructure for future API integration.
+Budget-Wise is a zero-based budgeting application built with React, Express, and TypeScript. It is a **local-first PWA with a backing database**: the client holds state in Zustand (persisted to localStorage) for instant, offline-capable reads/writes, and every mutation is synced to an Express + Drizzle/PostgreSQL backend with Passport session auth. On load the client hydrates from the server (`GET /api/budget-data`), so data is per-user and shared across devices.
 
 ## Common Commands
 
 ### Development
 - `npm run dev` - Start development server (runs Express backend with Vite dev server for client)
-- `npm run dev:client` - Run Vite dev server only (client-only, port 5000)
+- `npm run dev:client` - Run Vite dev server only (client-only, port 5001)
 
 ### Build & Production
 - `npm run build` - Build both client and server for production (uses script/build.ts)
 - `npm start` - Start production server (serves built assets from dist/)
 
 ### Database
-- `npm run db:push` - Push schema changes to PostgreSQL database using Drizzle
+- `npm run db:generate` - Generate a new migration from `shared/schema.ts` changes into `migrations/`
+- `npm run db:migrate` - Apply pending migrations to the local database
+- Migrations are also applied automatically at server startup (`server/migrate.ts`). **Never run `drizzle-kit push` against production** — schema changes reach prod only as reviewed migration files, committed and applied by the boot-time migrator.
 
 ### Type Checking
 - `npm run check` - Run TypeScript type checking across the codebase
@@ -48,7 +50,7 @@ Budget-Wise/
 ├── server/           # Express backend
 │   ├── index.ts      # Server entry point
 │   ├── routes.ts     # API route registration (currently minimal)
-│   ├── storage.ts    # Storage interface (IStorage) and MemStorage implementation
+│   ├── storage.ts    # IStorage interface and DbStorage (Drizzle/PostgreSQL) implementation
 │   ├── vite.ts       # Vite dev server integration
 │   └── static.ts     # Static file serving for production
 ├── shared/           # Code shared between client and server
@@ -58,14 +60,11 @@ Budget-Wise/
 
 ### State Management Architecture
 
-**Current State**: The application uses **Zustand with local persistence** for all state management. All data (budgets, accounts, transactions, categories) is stored in browser localStorage via the `zerobased-storage` key.
+**Local-first with backend sync**: Zustand (persisted to localStorage via the `zerobased-storage` key) is the immediate source of truth for the UI. Each mutating store action also calls `syncToServer(...)` (`client/src/lib/store.ts`) to push the change to the API. When offline or on failure, ops are queued FIFO in `client/src/lib/syncQueue.ts` (persisted to `bw-sync-queue`) and replayed in order on reconnect. On startup `BudgetDataProvider` fetches `GET /api/budget-data` and hydrates the store, so the server is the source of truth across sessions/devices.
 
-**Future Architecture**: The backend infrastructure is prepared for database integration:
-- Database schema defined in `shared/schema.ts` using Drizzle ORM
-- Storage interface (`IStorage`) defined in `server/storage.ts` with MemStorage implementation
-- `server/routes.ts` is the designated location for API endpoints (currently empty)
+**Backend**: fully active — Express + Passport session auth (`server/auth.ts`, bcrypt passwords in `server/password.ts`), API routes in `server/routes.ts`, data access via `DbStorage` in `server/storage.ts` (Drizzle over PostgreSQL, pool in `server/db.ts`). All routes are scoped to the authenticated user; budget-scoped routes go through `verifyBudgetOwnership`.
 
-**Critical**: When adding features, continue using Zustand store patterns. The migration to backend API calls should be done separately.
+**Critical**: When adding a mutating store action, add the matching `syncToServer` call and a server route that validates ownership. Update methods in `server/storage.ts` whitelist their columns — add new editable fields to the relevant `*_UPDATE_COLS` list.
 
 ### Data Model
 
@@ -139,18 +138,18 @@ The application supports **multiple budgets** with budget-scoped data:
 
 ### Development Server Configuration
 
-- Development: Vite dev server runs on port 5000, proxied through Express
+- Development: Express (with Vite middleware) serves on port 5050; `dev:client` runs Vite standalone on 5001
 - Production: Express serves static built files from `dist/public/`
-- Always use port from `process.env.PORT` (defaults to 5000)
+- Always use port from `process.env.PORT` (defaults to 5050)
 
-### Database (Prepared but Not Active)
+### Database (Active)
 
 - **ORM**: Drizzle ORM with PostgreSQL dialect
-- **Schema**: `shared/schema.ts` (currently only has `users` table)
+- **Schema**: `shared/schema.ts` — users, budgets, accounts, tracking accounts, category groups, categories, transactions, monthly assignments, budget templates, bill reminders
 - **Config**: `drizzle.config.ts` points to `./migrations` and requires `DATABASE_URL` env var
-- **Storage Interface**: `server/storage.ts` provides `IStorage` abstraction
-  - Current implementation: `MemStorage` (in-memory)
-  - Designed to be swapped with database implementation
+- **Migrations**: versioned SQL in `migrations/`, generated with `npm run db:generate` and applied at server startup via `server/migrate.ts` (`drizzle-orm` `migrate()`). The `0000_baseline.sql` is hand-edited to be idempotent so it adopts databases originally created with `drizzle-kit push`.
+- **Storage**: `server/storage.ts` provides the `IStorage` interface and its live `DbStorage` implementation
+- **Env vars**: `DATABASE_URL`, `SESSION_SECRET` (required in production), `RESEND_API_KEY` + `EMAIL_FROM` (password reset email), `APP_URL` (reset link base)
 
 ### TypeScript Configuration
 
