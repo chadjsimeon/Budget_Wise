@@ -16,5 +16,8 @@ if (typeof globalThis.localStorage !== 'undefined' && typeof globalThis.localSto
 }
 
 beforeEach(() => {
-  localStorage.clear();
+  // Server specs opt into the node environment, which has no localStorage.
+  if (typeof globalThis.localStorage !== 'undefined') {
+    localStorage.clear();
+  }
 });

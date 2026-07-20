@@ -78,5 +78,15 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./client/src/test/setup.ts"],
     css: false,
+    // Discover both client specs and the server specs (which opt into the node
+    // environment per-file). Paths are relative to the vite root (client/).
+    include: ["./src/**/*.{test,spec}.{ts,tsx}", "../server/**/*.{test,spec}.ts"],
+    // The server data layer constructs a pg Pool at import time (lazy — no
+    // connection until a query), so a placeholder URL is enough for unit tests.
+    env: {
+      DATABASE_URL:
+        process.env.DATABASE_URL ||
+        "postgresql://test:test@localhost:5432/test",
+    },
   },
 });
