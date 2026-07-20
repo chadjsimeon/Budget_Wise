@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
 import { registerRoutes } from "./routes";
 import { setupAuth } from "./auth";
 import { runMigrations } from "./migrate";
@@ -15,6 +16,31 @@ declare module "http" {
     rawBody: unknown;
   }
 }
+
+app.use(
+  helmet({
+    // CSP only in production — the Vite dev server needs inline scripts for HMR.
+    contentSecurityPolicy:
+      process.env.NODE_ENV === "production"
+        ? {
+            directives: {
+              "default-src": ["'self'"],
+              "script-src": ["'self'"],
+              // 'unsafe-inline' styles: Radix UI and the fonts stylesheet need it
+              "style-src": ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+              "font-src": ["'self'", "https://fonts.gstatic.com"],
+              "img-src": ["'self'", "data:", "blob:"],
+              // service worker fetches the Google Fonts stylesheet for its runtime cache
+              "connect-src": ["'self'", "https://fonts.googleapis.com", "https://fonts.gstatic.com"],
+              "worker-src": ["'self'"],
+              "manifest-src": ["'self'"],
+            },
+          }
+        : false,
+    // COEP would block the cross-origin font/PWA assets
+    crossOriginEmbedderPolicy: false,
+  }),
+);
 
 app.use(
   express.json({

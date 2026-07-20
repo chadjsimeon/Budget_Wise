@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
 import { generateResetToken } from "./auth";
 import { hashPassword, verifyPassword } from "./password";
@@ -34,6 +35,31 @@ async function verifyBudgetOwnership(userId: string, budgetId: string): Promise<
   return result.length > 0 && (await db.select({ userId: budgets.userId }).from(budgets).where(eq(budgets.id, budgetId)).limit(1))[0]?.userId === userId;
 }
 
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many requests, please try again later." },
+});
+
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  skipSuccessfulRequests: true,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many login attempts, please try again in 15 minutes." },
+});
+
+const forgotPasswordLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 5,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { message: "Too many password reset requests, please try again later." },
+});
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -45,6 +71,8 @@ export async function registerRoutes(
   });
 
   // ============= AUTH =============
+  app.use("/api/auth", authLimiter);
+
   app.get("/api/auth/user", (req, res) => {
     if (!req.isAuthenticated()) {
       return res.status(401).json({ message: "Not authenticated" });
@@ -115,7 +143,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/login", async (req, res, next) => {
+  app.post("/api/auth/login", loginLimiter, async (req, res, next) => {
     try {
       const { email, password } = req.body;
 
@@ -145,7 +173,7 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/forgot-password", async (req, res, next) => {
+  app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req, res, next) => {
     try {
       const { email } = req.body;
       if (!email) {
@@ -156,13 +184,16 @@ export async function registerRoutes(
       const token = generateResetToken();
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
-      // Always return success to avoid email enumeration
-      await storage.setResetToken(normalizedEmail, token, expiresAt);
+      // Only email actual account holders — mailing arbitrary addresses would
+      // make this endpoint an open spam relay through our sending domain.
+      const userExists = await storage.setResetToken(normalizedEmail, token, expiresAt);
+      if (userExists) {
+        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+        const resetUrl = `${baseUrl}/reset-password?token=${token}`;
+        await sendPasswordResetEmail(normalizedEmail, resetUrl);
+      }
 
-      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
-      const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-      await sendPasswordResetEmail(normalizedEmail, resetUrl);
-
+      // Same response either way to avoid email enumeration
       res.json({ message: "If an account exists with that email, a reset link has been sent." });
     } catch (error) {
       next(error);
