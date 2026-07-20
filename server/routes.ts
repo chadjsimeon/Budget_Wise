@@ -4,8 +4,18 @@ import rateLimit from "express-rate-limit";
 import { storage } from "./storage";
 import { generateResetToken } from "./auth";
 import { hashPassword, verifyPassword } from "./password";
+import {
+  registerSchema,
+  loginSchema,
+  forgotPasswordSchema,
+  resetPasswordSchema,
+  createTransactionBodySchema,
+  upsertAssignmentSchema,
+  bulkAssignmentsSchema,
+  parseBody,
+} from "./validation";
 import { sendPasswordResetEmail } from "./email";
-import { eq, inArray } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   budgets,
@@ -27,12 +37,43 @@ function requireAuth(req: Request, res: Response, next: NextFunction) {
 }
 
 /** Verify the given budgetId belongs to the authenticated user */
-async function verifyBudgetOwnership(userId: string, budgetId: string): Promise<boolean> {
-  const result = await db.select({ id: budgets.id })
+async function verifyBudgetOwnership(userId: string, budgetId: unknown): Promise<boolean> {
+  if (typeof budgetId !== "string" || !budgetId) return false;
+  const result = await db.select({ userId: budgets.userId })
     .from(budgets)
     .where(eq(budgets.id, budgetId))
     .limit(1);
-  return result.length > 0 && (await db.select({ userId: budgets.userId }).from(budgets).where(eq(budgets.id, budgetId)).limit(1))[0]?.userId === userId;
+  return result[0]?.userId === userId;
+}
+
+// Referenced-entity checks: a budget being owned doesn't mean an accountId or
+// categoryId in the payload belongs to that budget — without these, a payload
+// can point rows at entities from a different budget.
+async function accountInBudget(accountId: unknown, budgetId: string): Promise<boolean> {
+  if (typeof accountId !== "string" || !accountId) return false;
+  const result = await db.select({ id: accounts.id })
+    .from(accounts)
+    .where(and(eq(accounts.id, accountId), eq(accounts.budgetId, budgetId)))
+    .limit(1);
+  return result.length > 0;
+}
+
+async function categoryInBudget(categoryId: unknown, budgetId: string): Promise<boolean> {
+  if (typeof categoryId !== "string" || !categoryId) return false;
+  const result = await db.select({ id: categories.id })
+    .from(categories)
+    .where(and(eq(categories.id, categoryId), eq(categories.budgetId, budgetId)))
+    .limit(1);
+  return result.length > 0;
+}
+
+async function groupInBudget(groupId: unknown, budgetId: string): Promise<boolean> {
+  if (typeof groupId !== "string" || !groupId) return false;
+  const result = await db.select({ id: categoryGroups.id })
+    .from(categoryGroups)
+    .where(and(eq(categoryGroups.id, groupId), eq(categoryGroups.budgetId, budgetId)))
+    .limit(1);
+  return result.length > 0;
 }
 
 const authLimiter = rateLimit({
@@ -82,21 +123,12 @@ export async function registerRoutes(
 
   app.post("/api/auth/register", async (req, res, next) => {
     try {
-      const { email, password } = req.body;
-
-      if (!email || !password) {
-        return res.status(400).json({ message: "Email and password are required" });
+      const parsed = parseBody(registerSchema, req.body);
+      if (parsed.error !== undefined) {
+        return res.status(400).json({ message: parsed.error });
       }
+      const { email: normalizedEmail, password } = parsed.data;
 
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(email)) {
-        return res.status(400).json({ message: "Invalid email address" });
-      }
-      if (password.length < 8) {
-        return res.status(400).json({ message: "Password must be at least 8 characters" });
-      }
-
-      const normalizedEmail = email.toLowerCase().trim();
       const existing = await storage.getUserByEmail(normalizedEmail);
       if (existing) {
         return res.status(409).json({ message: "An account with this email already exists" });
@@ -145,13 +177,12 @@ export async function registerRoutes(
 
   app.post("/api/auth/login", loginLimiter, async (req, res, next) => {
     try {
-      const { email, password } = req.body;
-
-      if (!email || !password) {
-        return res.status(400).json({ message: "Email and password are required" });
+      const parsed = parseBody(loginSchema, req.body);
+      if (parsed.error !== undefined) {
+        return res.status(400).json({ message: parsed.error });
       }
+      const { email: normalizedEmail, password } = parsed.data;
 
-      const normalizedEmail = email.toLowerCase().trim();
       const user = await storage.getUserByEmail(normalizedEmail);
       if (!user) {
         return res.status(401).json({ message: "Invalid email or password" });
@@ -175,12 +206,11 @@ export async function registerRoutes(
 
   app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req, res, next) => {
     try {
-      const { email } = req.body;
-      if (!email) {
-        return res.status(400).json({ message: "Email is required" });
+      const parsed = parseBody(forgotPasswordSchema, req.body);
+      if (parsed.error !== undefined) {
+        return res.status(400).json({ message: parsed.error });
       }
-
-      const normalizedEmail = email.toLowerCase().trim();
+      const { email: normalizedEmail } = parsed.data;
       const token = generateResetToken();
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
@@ -202,14 +232,11 @@ export async function registerRoutes(
 
   app.post("/api/auth/reset-password", async (req, res, next) => {
     try {
-      const { token, password } = req.body;
-
-      if (!token || !password) {
-        return res.status(400).json({ message: "Token and password are required" });
+      const parsed = parseBody(resetPasswordSchema, req.body);
+      if (parsed.error !== undefined) {
+        return res.status(400).json({ message: parsed.error });
       }
-      if (password.length < 8) {
-        return res.status(400).json({ message: "Password must be at least 8 characters" });
-      }
+      const { token, password } = parsed.data;
 
       const user = await storage.getUserByResetToken(token);
       if (!user) {
@@ -483,6 +510,18 @@ export async function registerRoutes(
         return res.status(403).json({ message: "Forbidden" });
       }
 
+      // Nested entities are created with their own budgetId from the body —
+      // require them all to target the budget that was just verified.
+      if (
+        (categoryGroup && categoryGroup.budgetId !== account.budgetId) ||
+        (category && category.budgetId !== account.budgetId) ||
+        (openingTransaction &&
+          (openingTransaction.budgetId !== account.budgetId ||
+            openingTransaction.accountId !== account.id))
+      ) {
+        return res.status(400).json({ message: "Entities must belong to the same budget" });
+      }
+
       // Create optional debt repayments group
       if (categoryGroup) {
         await storage.createCategoryGroup({
@@ -649,6 +688,12 @@ export async function registerRoutes(
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
+      if (!await groupInBudget(groupId, budgetId)) {
+        return res.status(400).json({ message: "Category group does not belong to this budget" });
+      }
+      if (linkedAccountId && !await accountInBudget(linkedAccountId, budgetId)) {
+        return res.status(400).json({ message: "Account does not belong to this budget" });
+      }
       await storage.createCategory({ id, budgetId, groupId, name, goal, linkedAccountId });
       res.status(201).json({ id });
     } catch (error) {
@@ -662,6 +707,12 @@ export async function registerRoutes(
       const { budgetId, ...updates } = req.body;
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
+      }
+      if (updates.groupId && !await groupInBudget(updates.groupId, budgetId)) {
+        return res.status(400).json({ message: "Category group does not belong to this budget" });
+      }
+      if (updates.linkedAccountId && !await accountInBudget(updates.linkedAccountId, budgetId)) {
+        return res.status(400).json({ message: "Account does not belong to this budget" });
       }
       await storage.updateCategory(req.params.id, budgetId, updates);
       res.json({ ok: true });
@@ -694,6 +745,22 @@ export async function registerRoutes(
 
       if (!await verifyBudgetOwnership(userId, paymentTransaction.budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
+      }
+
+      // All three transactions must live in the verified budget and reference
+      // accounts/categories belonging to it.
+      const loanBudgetId = paymentTransaction.budgetId;
+      for (const tx of [paymentTransaction, interestTransaction, principalTransaction]) {
+        if (!tx) continue;
+        if (tx.budgetId !== loanBudgetId) {
+          return res.status(400).json({ message: "Transactions must belong to the same budget" });
+        }
+        if (!await accountInBudget(tx.accountId, loanBudgetId)) {
+          return res.status(400).json({ message: "Account does not belong to this budget" });
+        }
+        if (tx.categoryId && !await categoryInBudget(tx.categoryId, loanBudgetId)) {
+          return res.status(400).json({ message: "Category does not belong to this budget" });
+        }
       }
 
       // 1. Parent payment transaction (on checking/savings account)
@@ -764,6 +831,14 @@ export async function registerRoutes(
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
+      for (const u of [updates, interestUpdates, principalUpdates]) {
+        if (u?.accountId && !await accountInBudget(u.accountId, budgetId)) {
+          return res.status(400).json({ message: "Account does not belong to this budget" });
+        }
+        if (u?.categoryId && !await categoryInBudget(u.categoryId, budgetId)) {
+          return res.status(400).json({ message: "Category does not belong to this budget" });
+        }
+      }
 
       await storage.updateTransaction(req.params.id, budgetId, updates);
 
@@ -794,11 +869,26 @@ export async function registerRoutes(
   app.post("/api/transactions", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { transaction, accountUpdate } = req.body;
+      const parsed = parseBody(createTransactionBodySchema, req.body);
+      if (parsed.error !== undefined) {
+        return res.status(400).json({ message: parsed.error });
+      }
+      const { transaction, accountUpdate } = parsed.data;
       if (!await verifyBudgetOwnership(userId, transaction.budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      await storage.createTransaction(transaction);
+      if (!await accountInBudget(transaction.accountId, transaction.budgetId)) {
+        return res.status(400).json({ message: "Account does not belong to this budget" });
+      }
+      if (transaction.categoryId && !await categoryInBudget(transaction.categoryId, transaction.budgetId)) {
+        return res.status(400).json({ message: "Category does not belong to this budget" });
+      }
+      await storage.createTransaction({
+        ...transaction,
+        categoryId: transaction.categoryId ?? undefined,
+        memo: transaction.memo ?? undefined,
+        autoGeneratedById: transaction.autoGeneratedById ?? undefined,
+      });
       // Also update the account balance
       if (accountUpdate) {
         await storage.updateAccount(accountUpdate.id, transaction.budgetId, { balance: accountUpdate.balance });
@@ -815,6 +905,12 @@ export async function registerRoutes(
       const { budgetId, updates, accountUpdates } = req.body;
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
+      }
+      if (updates?.accountId && !await accountInBudget(updates.accountId, budgetId)) {
+        return res.status(400).json({ message: "Account does not belong to this budget" });
+      }
+      if (updates?.categoryId && !await categoryInBudget(updates.categoryId, budgetId)) {
+        return res.status(400).json({ message: "Category does not belong to this budget" });
       }
       await storage.updateTransaction(req.params.id, budgetId, updates);
       // Update affected account balances
@@ -864,7 +960,11 @@ export async function registerRoutes(
   app.put("/api/assignments", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { budgetId, monthKey, categoryId, amount } = req.body;
+      const parsed = parseBody(upsertAssignmentSchema, req.body);
+      if (parsed.error !== undefined) {
+        return res.status(400).json({ message: parsed.error });
+      }
+      const { budgetId, monthKey, categoryId, amount } = parsed.data;
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
@@ -878,12 +978,16 @@ export async function registerRoutes(
   app.put("/api/assignments/bulk", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { budgetId, assignments } = req.body;
+      const parsed = parseBody(bulkAssignmentsSchema, req.body);
+      if (parsed.error !== undefined) {
+        return res.status(400).json({ message: parsed.error });
+      }
+      const { budgetId, assignments } = parsed.data;
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
       await storage.upsertAssignmentsBulk(
-        assignments.map((a: any) => ({ ...a, budgetId }))
+        assignments.map((a) => ({ ...a, budgetId }))
       );
       res.json({ ok: true });
     } catch (error) {
@@ -930,6 +1034,12 @@ export async function registerRoutes(
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
+      if (data.categoryId && !await categoryInBudget(data.categoryId, budgetId)) {
+        return res.status(400).json({ message: "Category does not belong to this budget" });
+      }
+      if (data.accountId && !await accountInBudget(data.accountId, budgetId)) {
+        return res.status(400).json({ message: "Account does not belong to this budget" });
+      }
       await storage.createBillReminder({ ...data, budgetId });
       res.status(201).json({ id: data.id });
     } catch (error) {
@@ -943,6 +1053,12 @@ export async function registerRoutes(
       const { budgetId, ...updates } = req.body;
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
+      }
+      if (updates.categoryId && !await categoryInBudget(updates.categoryId, budgetId)) {
+        return res.status(400).json({ message: "Category does not belong to this budget" });
+      }
+      if (updates.accountId && !await accountInBudget(updates.accountId, budgetId)) {
+        return res.status(400).json({ message: "Account does not belong to this budget" });
       }
       await storage.updateBillReminder(req.params.id, budgetId, updates);
       res.json({ ok: true });
