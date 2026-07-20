@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Budget-Wise is a zero-based budgeting application built with React, Express, and TypeScript. It is a **local-first PWA with a backing database**: the client holds state in Zustand (persisted to localStorage) for instant, offline-capable reads/writes, and every mutation is synced to an Express + Drizzle/PostgreSQL backend with Passport session auth. On load the client hydrates from the server (`GET /api/budget-data`), so data is per-user and shared across devices.
+WantNot is a zero-based budgeting application built with React, Express, and TypeScript. It is a **local-first PWA with a backing database**: the client holds state in Zustand (persisted to localStorage) for instant, offline-capable reads/writes, and every mutation is synced to an Express + Drizzle/PostgreSQL backend with Passport session auth. On load the client hydrates from the server (`GET /api/budget-data`), so data is per-user and shared across devices.
 
 ## Common Commands
 
@@ -35,7 +35,7 @@ Budget-Wise is a zero-based budgeting application built with React, Express, and
 ### Project Structure
 
 ```
-Budget-Wise/
+WantNot/
 ├── client/           # React frontend
 │   └── src/
 │       ├── components/

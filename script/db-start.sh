@@ -10,7 +10,7 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 NC='\033[0m' # No Color
 
-echo "Starting Budget-Wise database..."
+echo "Starting WantNot database..."
 
 # Check if Docker is running
 if ! docker info > /dev/null 2>&1; then
@@ -29,7 +29,7 @@ docker compose up -d
 # Wait for database to be ready
 echo "Waiting for database to be ready..."
 RETRIES=30
-until docker exec budgetwise-db pg_isready -U user > /dev/null 2>&1 || [ $RETRIES -eq 0 ]; do
+until docker exec wantnot-db pg_isready -U user > /dev/null 2>&1 || [ $RETRIES -eq 0 ]; do
     echo -n "."
     RETRIES=$((RETRIES-1))
     sleep 1
@@ -46,10 +46,10 @@ echo ""
 echo "Connection info:"
 echo -e "  Host:     ${YELLOW}localhost${NC}"
 echo -e "  Port:     ${YELLOW}5432${NC}"
-echo -e "  Database: ${YELLOW}budgetwise${NC}"
+echo -e "  Database: ${YELLOW}wantnot${NC}"
 echo -e "  User:     ${YELLOW}postgres${NC}"
 echo -e "  Password: ${YELLOW}postgres${NC}"
 echo ""
-echo -e "DATABASE_URL: ${YELLOW}postgresql://postgres:postgres@localhost:5432/budgetwise${NC}"
+echo -e "DATABASE_URL: ${YELLOW}postgresql://postgres:postgres@localhost:5432/wantnot${NC}"
 echo ""
 echo "To run migrations: npm run db:migrate"

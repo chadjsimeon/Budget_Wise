@@ -1,11 +1,11 @@
 services:
   postgres:
     image: postgres:17-alpine
-    container_name: budgetwise-db
+    container_name: wantnot-db
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: budgetwise
+      POSTGRES_DB: wantnot
     ports:
       - "5432:5432"
     volumes:
@@ -20,11 +20,11 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: budgetwise-app
+    container_name: wantnot-app
     ports:
       - "5050:5050"
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/budgetwise
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/wantnot
       SESSION_SECRET: local-dev-secret-change-in-prod
       NODE_ENV: production
       PORT: "5050"

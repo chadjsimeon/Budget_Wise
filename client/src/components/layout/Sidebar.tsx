@@ -150,7 +150,7 @@ export function Sidebar({ className, onNavigate }: { className?: string; onNavig
               className="w-full h-full object-contain"
             />
           </div>
-          <span className="bg-gradient-to-r from-white to-gray-200 bg-clip-text text-transparent">Budget Wise</span>
+          <span className="bg-gradient-to-r from-white to-gray-200 bg-clip-text text-transparent">WantNot</span>
         </div>
       </div>
 
@@ -487,10 +487,10 @@ export function Sidebar({ className, onNavigate }: { className?: string; onNavig
           <DropdownMenuTrigger asChild>
             <div className="flex items-center gap-3 px-2 py-2 rounded-md hover:bg-sidebar-accent/50 transition-colors cursor-pointer text-sidebar-foreground/80 hover:text-white">
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-red-600 to-red-700 flex items-center justify-center text-xs font-bold text-white shadow-md">
-                {user?.email?.charAt(0).toUpperCase() ?? 'BW'}
+                {user?.email?.charAt(0).toUpperCase() ?? 'WN'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{user?.email ?? 'Budget Wise'}</p>
+                <p className="text-sm font-medium truncate">{user?.email ?? 'WantNot'}</p>
                 <p className="text-xs opacity-70 truncate">{currentBudget?.name}</p>
               </div>
               <Settings className="w-4 h-4 opacity-70" />

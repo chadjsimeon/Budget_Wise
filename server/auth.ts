@@ -36,7 +36,7 @@ export function setupAuth(app: Express) {
   }
 
   const sessionSettings: session.SessionOptions = {
-    secret: sessionSecret || "budget-wise-dev-secret",
+    secret: sessionSecret || "wantnot-dev-secret",
     resave: false,
     saveUninitialized: false,
     proxy: isProduction,

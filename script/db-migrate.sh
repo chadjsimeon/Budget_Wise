@@ -26,7 +26,7 @@ fi
 # Check if DATABASE_URL is set
 if [ -z "$DATABASE_URL" ]; then
     echo -e "${YELLOW}DATABASE_URL not set. Using default local connection.${NC}"
-    export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/budgetwise"
+    export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/wantnot"
 fi
 
 echo "Applying pending migrations..."

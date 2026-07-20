@@ -11,8 +11,8 @@ export default defineConfig({
       registerType: "autoUpdate",
       includeAssets: ["favicon.png", "apple-touch-icon-180x180.png"],
       manifest: {
-        name: "Budget Wise",
-        short_name: "Budget Wise",
+        name: "WantNot",
+        short_name: "WantNot",
         description:
           "A powerful zero-based budgeting application to take control of your finances.",
         theme_color: "#0f172a",

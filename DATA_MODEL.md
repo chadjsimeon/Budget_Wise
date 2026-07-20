@@ -1,6 +1,6 @@
-# 📊 Budget-Wise Data Model Documentation
+# 📊 WantNot Data Model Documentation
 
-> Comprehensive reference for the Budget-Wise application data model
+> Comprehensive reference for the WantNot application data model
 
 ## Table of Contents
 - [Overview](#overview)
@@ -25,7 +25,7 @@
 
 ## Overview
 
-Budget-Wise is a zero-based budgeting application that supports multiple budgets with flexible currency formatting. The data model is designed around budget-scoped entities that enable users to manage multiple independent budgets while maintaining global resources like tracking accounts and budget templates.
+WantNot is a zero-based budgeting application that supports multiple budgets with flexible currency formatting. The data model is designed around budget-scoped entities that enable users to manage multiple independent budgets while maintaining global resources like tracking accounts and budget templates.
 
 ### Key Concepts
 

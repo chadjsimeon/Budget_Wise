@@ -82,7 +82,7 @@ export default function LoginPage() {
               />
             </div>
           </div>
-          <CardTitle className="text-2xl">Budget Wise</CardTitle>
+          <CardTitle className="text-2xl">WantNot</CardTitle>
           <CardDescription>
             {mode === "login" && "Sign in to manage your budget"}
             {mode === "register" && "Create an account to get started"}

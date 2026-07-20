@@ -5,7 +5,7 @@ const resend = process.env.RESEND_API_KEY
   : null;
 
 const fromAddress =
-  process.env.EMAIL_FROM || "Budget Wise <onboarding@resend.dev>";
+  process.env.EMAIL_FROM || "WantNot <onboarding@resend.dev>";
 
 export async function sendPasswordResetEmail(
   to: string,
@@ -21,10 +21,10 @@ export async function sendPasswordResetEmail(
   const { error } = await resend.emails.send({
     from: fromAddress,
     to,
-    subject: "Reset your Budget Wise password",
+    subject: "Reset your WantNot password",
     html: `
       <div style="font-family: sans-serif; max-width: 400px; margin: 0 auto; padding: 20px;">
-        <h2 style="color: #333;">Budget Wise</h2>
+        <h2 style="color: #333;">WantNot</h2>
         <p>You requested a password reset.</p>
         <a href="${resetUrl}" style="display: inline-block; padding: 12px 24px; background: #2563eb; color: #fff; text-decoration: none; border-radius: 6px; margin: 16px 0;">
           Reset Password
