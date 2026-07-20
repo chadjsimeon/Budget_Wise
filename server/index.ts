@@ -11,6 +11,17 @@ import { createServer } from "http";
 const app = express();
 const httpServer = createServer(app);
 
+process.on("unhandledRejection", (reason) => {
+  // Log without crashing: a stray rejected promise shouldn't take down the
+  // service (Railway stops restarting after 3 failures).
+  console.error("[fatal] unhandledRejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[fatal] uncaughtException:", err);
+  process.exit(1);
+});
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -63,16 +74,22 @@ export function log(message: string, source = "express") {
   console.log(`${formattedTime} [${source}] ${message}`);
 }
 
+const logResponseBodies = process.env.NODE_ENV !== "production";
+
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
   let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
+  // Response bodies carry the user's entire financial dataset — never write
+  // them to production logs. Auth responses are excluded even in dev.
+  if (logResponseBodies && !path.startsWith("/api/auth")) {
+    const originalResJson = res.json;
+    res.json = function (bodyJson, ...args) {
+      capturedJsonResponse = bodyJson;
+      return originalResJson.apply(res, [bodyJson, ...args]);
+    };
+  }
 
   res.on("finish", () => {
     const duration = Date.now() - start;
@@ -97,10 +114,16 @@ app.use((req, res, next) => {
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    console.error(`[error] ${status}`, err.stack || err);
 
+    if (res.headersSent) {
+      return;
+    }
+    // Don't leak internal error details (DB constraint text, driver messages)
+    // to clients on unexpected failures.
+    const message =
+      status < 500 ? err.message || "Request failed" : "Internal Server Error";
     res.status(status).json({ message });
-    throw err;
   });
 
   // importantly only setup vite in development and after
