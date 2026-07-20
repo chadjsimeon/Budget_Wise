@@ -3,18 +3,10 @@ set -e
 
 # Production boot script (referenced by Dockerfile CMD).
 #
-# SAFETY: This must NEVER destroy existing data. Do not add a loop that executes
-# raw migrations/*.sql at boot — that is how every deploy previously wiped the
-# database (a hand-written "clean slate" DROP TABLE migration ran on every start).
-#
-# Schema is kept in sync with `drizzle-kit push`, which only ADDS/ALTERS where the
-# live DB diverges from shared/schema.ts. It will not drop a table/column that is
-# still defined in the schema. Keep schema changes ADDITIVE; removing a column or
-# table from schema.ts can cause push --force to drop it, so such changes need an
-# explicit, reviewed migration instead.
+# SAFETY: Schema changes reach production ONLY as reviewed migration files
+# (shared/schema.ts -> `npm run db:generate` -> commit the SQL in migrations/).
+# The server applies pending migrations itself at startup (server/migrate.ts)
+# and refuses to boot if one fails. Never run `drizzle-kit push` against
+# production — an unreviewed destructive diff is how deploys used to wipe data.
 
-echo "=== Syncing database schema (additive) ==="
-npx drizzle-kit push --force --verbose 2>&1 || echo "=== drizzle-kit push failed ==="
-
-echo "=== Starting server ==="
 exec node dist/index.cjs

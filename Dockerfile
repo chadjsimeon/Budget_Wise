@@ -19,12 +19,9 @@ FROM node:20-alpine AS runtime
 WORKDIR /app
 
 COPY --from=build /app/dist ./dist
-COPY shared/ shared/
+# Migrations are applied programmatically at server startup (server/migrate.ts),
+# so the runtime image needs no node_modules — only the SQL files.
 COPY migrations/ migrations/
-COPY drizzle.config.ts tsconfig.json package.json ./
-
-# Install only what drizzle-kit push needs (schema parsing + DB connection)
-RUN npm install --no-save drizzle-kit@0.31.4 drizzle-orm@0.39.3 drizzle-zod@0.7.0 pg@8.16.3 tsx@4.20.5 zod@3.25.76
 
 ENV NODE_ENV=production
 EXPOSE 5050

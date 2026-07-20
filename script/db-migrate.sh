@@ -1,6 +1,7 @@
 #!/bin/bash
 
-# Script to run database migrations using Drizzle Kit
+# Script to apply pending Drizzle migrations to the local database.
+# Generate new migrations with: npm run db:generate
 
 set -e
 
@@ -28,12 +29,11 @@ if [ -z "$DATABASE_URL" ]; then
     export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/budgetwise"
 fi
 
-echo "Running database migrations..."
+echo "Applying pending migrations..."
 echo -e "Using DATABASE_URL: ${YELLOW}${DATABASE_URL}${NC}"
 echo ""
 
-# Run Drizzle Kit push
-if npm run db:push; then
+if npx drizzle-kit migrate; then
     echo ""
     echo -e "${GREEN}Database migrations completed successfully!${NC}"
 else

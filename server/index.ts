@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupAuth } from "./auth";
+import { runMigrations } from "./migrate";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
@@ -62,6 +63,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await runMigrations();
   setupAuth(app);
   await registerRoutes(httpServer, app);
 
@@ -95,4 +97,7 @@ app.use((req, res, next) => {
       log(`serving on port ${port}`);
     },
   );
-})();
+})().catch((err) => {
+  console.error("Fatal startup error:", err);
+  process.exit(1);
+});
