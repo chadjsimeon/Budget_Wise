@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "crypto";
+import { randomBytes } from "crypto";
 import passport from "passport";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
@@ -15,10 +15,6 @@ declare global {
   }
 }
 
-export function hashPassword(password: string): string {
-  return createHash("sha256").update(password).digest("hex");
-}
-
 export function generateResetToken(): string {
   return randomBytes(32).toString("hex");
 }
@@ -32,8 +28,15 @@ export function setupAuth(app: Express) {
     app.set("trust proxy", 1);
   }
 
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (isProduction && !sessionSecret) {
+    throw new Error(
+      "SESSION_SECRET must be set in production (generate one with: openssl rand -hex 32)",
+    );
+  }
+
   const sessionSettings: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || "budget-wise-secret-key-change-in-production",
+    secret: sessionSecret || "budget-wise-dev-secret",
     resave: false,
     saveUninitialized: false,
     proxy: isProduction,
@@ -45,6 +48,7 @@ export function setupAuth(app: Express) {
     cookie: {
       secure: isProduction ? "auto" : false,
       httpOnly: true,
+      sameSite: "lax",
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     },
   };

@@ -3,6 +3,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupAuth } from "./auth";
 import { runMigrations } from "./migrate";
+import { wrapLegacyPasswordHashes } from "./password";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 
@@ -64,6 +65,7 @@ app.use((req, res, next) => {
 
 (async () => {
   await runMigrations();
+  await wrapLegacyPasswordHashes();
   setupAuth(app);
   await registerRoutes(httpServer, app);
 

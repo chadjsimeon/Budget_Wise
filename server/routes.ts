@@ -1,7 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { hashPassword, generateResetToken } from "./auth";
+import { generateResetToken } from "./auth";
+import { hashPassword, verifyPassword } from "./password";
 import { sendPasswordResetEmail } from "./email";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "./db";
@@ -63,8 +64,8 @@ export async function registerRoutes(
       if (!emailRegex.test(email)) {
         return res.status(400).json({ message: "Invalid email address" });
       }
-      if (password.length < 6) {
-        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
       }
 
       const normalizedEmail = email.toLowerCase().trim();
@@ -75,7 +76,7 @@ export async function registerRoutes(
 
       const user = await storage.createUser({
         email: normalizedEmail,
-        password: hashPassword(password),
+        password: await hashPassword(password),
       });
 
       // Create a default budget with starter categories for new users
@@ -124,8 +125,15 @@ export async function registerRoutes(
 
       const normalizedEmail = email.toLowerCase().trim();
       const user = await storage.getUserByEmail(normalizedEmail);
-      if (!user || user.password !== hashPassword(password)) {
+      if (!user) {
         return res.status(401).json({ message: "Invalid email or password" });
+      }
+      const { ok, needsRehash } = await verifyPassword(password, user.password);
+      if (!ok) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      if (needsRehash) {
+        await storage.updatePassword(user.id, await hashPassword(password));
       }
 
       req.logIn({ id: user.id, email: user.email }, (loginErr) => {
@@ -168,8 +176,8 @@ export async function registerRoutes(
       if (!token || !password) {
         return res.status(400).json({ message: "Token and password are required" });
       }
-      if (password.length < 6) {
-        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
       }
 
       const user = await storage.getUserByResetToken(token);
@@ -177,7 +185,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Invalid or expired reset link" });
       }
 
-      await storage.updatePassword(user.id, hashPassword(password));
+      await storage.updatePassword(user.id, await hashPassword(password));
       res.json({ message: "Password has been reset. You can now sign in." });
     } catch (error) {
       next(error);
