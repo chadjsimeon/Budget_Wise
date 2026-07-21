@@ -1,0 +1,26 @@
+<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="32" cy="32" r="32" fill="#0A1F44"/>
+
+  <!-- Bill stack, offset layers for depth -->
+  <g>
+    <!-- Bottom bill -->
+    <rect x="11" y="38" width="42" height="15" rx="2" fill="#0D3B7A"/>
+    <rect x="11" y="38" width="42" height="15" rx="2" fill="none" stroke="#082A57" stroke-width="1"/>
+
+    <!-- Middle bill -->
+    <rect x="11" y="31" width="42" height="15" rx="2" fill="#1656A8"/>
+    <rect x="11" y="31" width="42" height="15" rx="2" fill="none" stroke="#082A57" stroke-width="1"/>
+
+    <!-- Top bill -->
+    <rect x="11" y="24" width="42" height="15" rx="2" fill="#2E7BD6"/>
+    <rect x="11" y="24" width="42" height="15" rx="2" fill="none" stroke="#164C8C" stroke-width="1"/>
+
+    <!-- Simple bird silhouette (generic, not official emblem) on left of top bill -->
+    <path d="M18 34 Q16 30 19 28 Q20 30 19 32 Q22 30 23 27 Q22 31 19 33 Q21 34 23 33 Q20 36 17 35 Z"
+          fill="#BFE0FF" opacity="0.85"/>
+
+    <!-- 100 text on top bill -->
+    <text x="41" y="35" font-family="Georgia, serif" font-weight="bold" font-size="10.5" fill="#FFFFFF" text-anchor="middle">100</text>
+  </g>
+</svg>
