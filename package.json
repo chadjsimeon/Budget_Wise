@@ -12,6 +12,7 @@
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:generate": "drizzle-kit generate",
+    "db:drift": "tsx script/schema-drift.ts",
     "db:stop": "./script/db-stop.sh",
     "db:migrate": "./script/db-migrate.sh"
   },
