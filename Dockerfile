@@ -27,4 +27,6 @@ ENV NODE_ENV=production
 EXPOSE 5050
 
 COPY script/start.sh ./script/start.sh
+# Strip CRs in case the build context came from a Windows checkout with CRLF endings.
+RUN sed -i 's/\r$//' script/start.sh
 CMD ["sh", "script/start.sh"]
