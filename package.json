@@ -8,7 +8,7 @@
     "dev": "cross-env NODE_ENV=development tsx server/index.ts",
     "build": "tsx script/build.ts",
     "test": "vitest",
-    "test:ci": "CI=1 vitest",
+    "test:ci": "vitest run",
     "start": "cross-env NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:generate": "drizzle-kit generate",

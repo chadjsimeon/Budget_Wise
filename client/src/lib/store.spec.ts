@@ -80,14 +80,15 @@ describe('Budget CRUD', () => {
     expect(newBudget.name).toBe('Second Budget');
     expect(state.currentBudgetId).toBe(newBudget.id);
 
-    // Default category structure: 3 groups
+    // Default category structure: 5 groups
     const newGroups = state.categoryGroups.filter(g => g.budgetId === newBudget.id);
-    expect(newGroups).toHaveLength(3);
-    expect(newGroups.map(g => g.name)).toEqual(['Bills', 'Needs', 'Wants']);
+    expect(newGroups.map(g => g.name)).toEqual([
+      'Monthly Bills', 'Lifestyle', 'Subscriptions', 'Savings', 'Transport',
+    ]);
 
-    // Default categories: 4 + 4 + 5 = 13
+    // Default categories: 5 + 4 + 3 + 2 + 3 = 17
     const newCats = state.categories.filter(c => c.budgetId === newBudget.id);
-    expect(newCats).toHaveLength(13);
+    expect(newCats).toHaveLength(17);
   });
 
   test('switchBudget changes currentBudgetId', () => {
