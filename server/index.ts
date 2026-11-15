@@ -113,7 +113,16 @@ app.use((req, res, next) => {
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
+    // Postgres data (class 22) and integrity (class 23) errors are caused by
+    // the request itself and will fail identically on every retry. Report them
+    // as 4xx so the client's sync queue drops the request instead of retrying
+    // it forever: 409 for a duplicate key (a replayed create — the row is
+    // already there), 422 for the rest.
+    const pgCode: unknown = err.code ?? err.cause?.code;
+    const dataError = typeof pgCode === "string" && /^(22|23)/.test(pgCode);
+    const status = dataError
+      ? pgCode === "23505" ? 409 : 422
+      : err.status || err.statusCode || 500;
     console.error(`[error] ${status}`, err.stack || err);
 
     if (res.headersSent) {
@@ -121,8 +130,9 @@ app.use((req, res, next) => {
     }
     // Don't leak internal error details (DB constraint text, driver messages)
     // to clients on unexpected failures.
-    const message =
-      status < 500 ? err.message || "Request failed" : "Internal Server Error";
+    const message = dataError
+      ? pgCode === "23505" ? "Already exists" : "Invalid data"
+      : status < 500 ? err.message || "Request failed" : "Internal Server Error";
     res.status(status).json({ message });
   });
 

@@ -31,21 +31,10 @@ export default defineConfig({
           },
         ],
       },
-      workbox: {
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) =>
-              url.pathname === "/api/budget-data" ||
-              url.pathname === "/api/auth/user",
-            handler: "NetworkFirst",
-            options: {
-              cacheName: "api-cache",
-              expiration: { maxEntries: 8, maxAgeSeconds: 60 * 60 * 24 * 7 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
-      },
+      // No runtime caching of /api responses: the persisted Zustand store is
+      // the offline copy of the user's data. A second copy in the service
+      // worker cache went stale, overwrote newer local state on offline
+      // start-up, and outlived logout.
     }),
   ],
   resolve: {

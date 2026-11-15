@@ -1,9 +1,20 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
+/** A non-2xx response. Network failures stay plain errors with no status. */
+export class ApiRequestError extends Error {
+  constructor(
+    public readonly status: number,
+    text: string,
+  ) {
+    super(`${status}: ${text}`);
+    this.name = "ApiRequestError";
+  }
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    throw new ApiRequestError(res.status, text);
   }
 }
 
