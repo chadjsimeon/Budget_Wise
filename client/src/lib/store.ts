@@ -1747,9 +1747,17 @@ export const useStore = create<AppState>()(
         monthlyAssignments: state.monthlyAssignments,
         budgetTemplates: state.budgetTemplates,
         billReminders: state.billReminders,
-        currentMonth: state.currentMonth,
         helpModeEnabled: state.helpModeEnabled,
         hasSeenWelcome: state.hasSeenWelcome,
+      }),
+      // The month being viewed is not saved: the app always opens on today's
+      // month. It used to be persisted, so a browser last used months ago
+      // reopened (and showed new sign-ups) that old month. Copies saved by
+      // earlier versions still contain it, so it is dropped here too.
+      merge: (persisted, current) => ({
+        ...current,
+        ...(persisted as Partial<AppState>),
+        currentMonth: current.currentMonth,
       }),
       migrate: (persistedState: any, version: number) => {
         // If version doesn't match, return undefined to force initial state

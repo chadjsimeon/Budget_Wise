@@ -312,6 +312,32 @@ describe('store stays consistent with the server', () => {
     });
   });
 
+  describe('the month being viewed', () => {
+    test('a browser last used months ago opens on the current month', async () => {
+      // Given: state saved by an earlier visit, viewing an old month
+      const thisMonth = store().currentMonth;
+      localStorage.setItem('zerobased-storage', JSON.stringify({
+        version: 7,
+        state: { currentMonth: '2020-05', hasSeenWelcome: true },
+      }));
+
+      // When: the app starts and restores its saved state
+      await useStore.persist.rehydrate();
+
+      // Then: the rest is restored, but the month is today's
+      expect(store().hasSeenWelcome).toBe(true);
+      expect(store().currentMonth).toBe(thisMonth);
+    });
+
+    test('is not written to saved state', () => {
+      store().setMonth('2020-05');
+
+      const saved = JSON.parse(localStorage.getItem('zerobased-storage')!);
+
+      expect(saved.state).not.toHaveProperty('currentMonth');
+    });
+  });
+
   describe('loading from the server', () => {
     const budget = (id: string, name: string) => ({
       id, name, createdAt: '2026-01-01T00:00:00.000Z', currency: 'TTD',
