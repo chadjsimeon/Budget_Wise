@@ -1,8 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
-import { storage } from "./storage";
-import { generateResetToken } from "./auth";
+import { storage, type BalanceChange } from "./storage";
+import { generateResetToken, hashResetToken, resetLinkBase } from "./resetToken";
 import { hashPassword, verifyPassword } from "./password";
 import {
   registerSchema,
@@ -15,7 +15,7 @@ import {
   parseBody,
 } from "./validation";
 import { sendPasswordResetEmail } from "./email";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, asc, desc } from "drizzle-orm";
 import { db } from "./db";
 import {
   budgets,
@@ -76,6 +76,12 @@ async function groupInBudget(groupId: unknown, budgetId: string): Promise<boolea
   return result.length > 0;
 }
 
+// Hashed once, on first use, with the same cost as real password hashes.
+let dummyPasswordHash: Promise<string> | undefined;
+function getDummyPasswordHash(): Promise<string> {
+  return (dummyPasswordHash ??= hashPassword(crypto.randomUUID()));
+}
+
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 30,
@@ -134,37 +140,41 @@ export async function registerRoutes(
         return res.status(409).json({ message: "An account with this email already exists" });
       }
 
-      const user = await storage.createUser({
-        email: normalizedEmail,
-        password: await hashPassword(password),
-      });
+      const user = await storage.transaction(async (tx) => {
+        const created = await tx.createUser({
+          email: normalizedEmail,
+          password: await hashPassword(password),
+        });
 
-      // Create a default budget with starter categories for new users
-      const budgetId = crypto.randomUUID();
-      await storage.createBudget({
-        id: budgetId,
-        userId: user.id,
-        name: "My Budget",
-        currency: "TTD",
-        currencyPlacement: "before",
-        numberFormat: "1,234.56",
-        dateFormat: "MM/DD/YYYY",
-      });
+        // Create a default budget with starter categories for new users
+        const budgetId = crypto.randomUUID();
+        await tx.createBudget({
+          id: budgetId,
+          userId: created.id,
+          name: "My Budget",
+          currency: "TTD",
+          currencyPlacement: "before",
+          numberFormat: "1,234.56",
+          dateFormat: "MM/DD/YYYY",
+        });
 
-      const DEFAULT_GROUPS = [
-        { name: 'Monthly Bills', cats: ['Rent/Mortgage', 'Electricity', 'Water', 'Internet', 'Phone'] },
-        { name: 'Lifestyle',     cats: ['Groceries', 'Dining Out', 'Gym', 'Entertainment'] },
-        { name: 'Transport',     cats: ['Fuel', 'Car Insurance', 'Car Maintenance'] },
-        { name: 'Subscriptions', cats: ['Netflix', 'Amazon Prime', 'Spotify'] },
-        { name: 'Savings',       cats: ['Emergency Fund', 'Vacation'] },
-      ];
-      for (const group of DEFAULT_GROUPS) {
-        const groupId = crypto.randomUUID();
-        await storage.createCategoryGroup({ id: groupId, budgetId, name: group.name });
-        for (const catName of group.cats) {
-          await storage.createCategory({ id: crypto.randomUUID(), budgetId, groupId, name: catName });
+        const DEFAULT_GROUPS = [
+          { name: 'Monthly Bills', cats: ['Rent/Mortgage', 'Electricity', 'Water', 'Internet', 'Phone'] },
+          { name: 'Lifestyle',     cats: ['Groceries', 'Dining Out', 'Gym', 'Entertainment'] },
+          { name: 'Transport',     cats: ['Fuel', 'Car Insurance', 'Car Maintenance'] },
+          { name: 'Subscriptions', cats: ['Netflix', 'Amazon Prime', 'Spotify'] },
+          { name: 'Savings',       cats: ['Emergency Fund', 'Vacation'] },
+        ];
+        for (const group of DEFAULT_GROUPS) {
+          const groupId = crypto.randomUUID();
+          await tx.createCategoryGroup({ id: groupId, budgetId, name: group.name });
+          for (const catName of group.cats) {
+            await tx.createCategory({ id: crypto.randomUUID(), budgetId, groupId, name: catName });
+          }
         }
-      }
+
+        return created;
+      });
 
       req.logIn({ id: user.id, email: user.email }, (loginErr) => {
         if (loginErr) return next(loginErr);
@@ -184,11 +194,13 @@ export async function registerRoutes(
       const { email: normalizedEmail, password } = parsed.data;
 
       const user = await storage.getUserByEmail(normalizedEmail);
-      if (!user) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
-      const { ok, needsRehash } = await verifyPassword(password, user.password);
-      if (!ok) {
+      // An unknown email still pays for a bcrypt comparison, so response time
+      // doesn't reveal which addresses have accounts.
+      const { ok, needsRehash } = await verifyPassword(
+        password,
+        user?.password ?? (await getDummyPasswordHash()),
+      );
+      if (!user || !ok) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
       if (needsRehash) {
@@ -204,30 +216,36 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req, res, next) => {
-    try {
-      const parsed = parseBody(forgotPasswordSchema, req.body);
-      if (parsed.error !== undefined) {
-        return res.status(400).json({ message: parsed.error });
+  app.post("/api/auth/forgot-password", forgotPasswordLimiter, (req, res) => {
+    const parsed = parseBody(forgotPasswordSchema, req.body);
+    if (parsed.error !== undefined) {
+      return res.status(400).json({ message: parsed.error });
+    }
+    const { email: normalizedEmail } = parsed.data;
+    const baseUrl = resetLinkBase(process.env, `${req.protocol}://${req.get("host")}`);
+
+    // Answer before doing any of the work: the response, its status and its
+    // timing are then identical whether or not the address has an account,
+    // and whether or not the email could be sent.
+    res.json({ message: "If an account exists with that email, a reset link has been sent." });
+
+    void (async () => {
+      if (!baseUrl) {
+        console.error("[auth] APP_URL is not set; password reset email not sent");
+        return;
       }
-      const { email: normalizedEmail } = parsed.data;
       const token = generateResetToken();
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
       // Only email actual account holders — mailing arbitrary addresses would
       // make this endpoint an open spam relay through our sending domain.
-      const userExists = await storage.setResetToken(normalizedEmail, token, expiresAt);
+      const userExists = await storage.setResetToken(normalizedEmail, hashResetToken(token), expiresAt);
       if (userExists) {
-        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
-        const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-        await sendPasswordResetEmail(normalizedEmail, resetUrl);
+        await sendPasswordResetEmail(normalizedEmail, `${baseUrl}/reset-password?token=${token}`);
       }
-
-      // Same response either way to avoid email enumeration
-      res.json({ message: "If an account exists with that email, a reset link has been sent." });
-    } catch (error) {
-      next(error);
-    }
+    })().catch((error) => {
+      console.error("[auth] password reset request failed:", error);
+    });
   });
 
   app.post("/api/auth/reset-password", async (req, res, next) => {
@@ -237,13 +255,24 @@ export async function registerRoutes(
         return res.status(400).json({ message: parsed.error });
       }
       const { token, password } = parsed.data;
+      const tokenHash = hashResetToken(token);
 
-      const user = await storage.getUserByResetToken(token);
-      if (!user) {
+      // Cheap check first so a bad token doesn't cost a bcrypt hash.
+      if (!(await storage.getUserByResetToken(tokenHash))) {
         return res.status(400).json({ message: "Invalid or expired reset link" });
       }
 
-      await storage.updatePassword(user.id, await hashPassword(password));
+      const hashedPassword = await hashPassword(password);
+      const userId = await storage.transaction(async (tx) => {
+        const id = await tx.resetPasswordWithToken(tokenHash, hashedPassword);
+        // Whoever knew the old password is signed out everywhere.
+        if (id) await tx.deleteUserSessions(id);
+        return id;
+      });
+      if (!userId) {
+        return res.status(400).json({ message: "Invalid or expired reset link" });
+      }
+
       res.json({ message: "Password has been reset. You can now sign in." });
     } catch (error) {
       next(error);
@@ -272,7 +301,8 @@ export async function registerRoutes(
       const userBudgets = await db
         .select()
         .from(budgets)
-        .where(eq(budgets.userId, userId));
+        .where(eq(budgets.userId, userId))
+        .orderBy(asc(budgets.createdAt), asc(budgets.id));
 
       if (userBudgets.length === 0) {
         return res.json({
@@ -301,14 +331,22 @@ export async function registerRoutes(
         userBudgetTemplates,
         userBillReminders,
       ] = await Promise.all([
-        db.select().from(accounts).where(inArray(accounts.budgetId, budgetIds)),
-        db.select().from(trackingAccounts).where(eq(trackingAccounts.userId, userId)),
-        db.select().from(categoryGroups).where(inArray(categoryGroups.budgetId, budgetIds)),
-        db.select().from(categories).where(inArray(categories.budgetId, budgetIds)),
-        db.select().from(transactions).where(inArray(transactions.budgetId, budgetIds)),
+        // Every list has a defined order, so a reload never reshuffles the UI.
+        db.select().from(accounts).where(inArray(accounts.budgetId, budgetIds))
+          .orderBy(asc(accounts.sortOrder), asc(accounts.id)),
+        db.select().from(trackingAccounts).where(eq(trackingAccounts.userId, userId))
+          .orderBy(asc(trackingAccounts.sortOrder), asc(trackingAccounts.id)),
+        db.select().from(categoryGroups).where(inArray(categoryGroups.budgetId, budgetIds))
+          .orderBy(asc(categoryGroups.sortOrder), asc(categoryGroups.id)),
+        db.select().from(categories).where(inArray(categories.budgetId, budgetIds))
+          .orderBy(asc(categories.sortOrder), asc(categories.id)),
+        db.select().from(transactions).where(inArray(transactions.budgetId, budgetIds))
+          .orderBy(desc(transactions.date), desc(transactions.createdAt), asc(transactions.id)),
         db.select().from(monthlyAssignments).where(inArray(monthlyAssignments.budgetId, budgetIds)),
-        db.select().from(budgetTemplates).where(eq(budgetTemplates.userId, userId)),
-        db.select().from(billReminders).where(inArray(billReminders.budgetId, budgetIds)),
+        db.select().from(budgetTemplates).where(eq(budgetTemplates.userId, userId))
+          .orderBy(asc(budgetTemplates.createdAt), asc(budgetTemplates.id)),
+        db.select().from(billReminders).where(inArray(billReminders.budgetId, budgetIds))
+          .orderBy(asc(billReminders.createdAt), asc(billReminders.id)),
       ]);
 
       const assignmentsMap: Record<string, Record<string, Record<string, number>>> = {};
@@ -373,6 +411,8 @@ export async function registerRoutes(
           memo: t.memo ?? undefined,
           cleared: t.cleared,
           autoGeneratedById: t.autoGeneratedById ?? undefined,
+          transferId: t.transferId ?? undefined,
+          isOpeningBalance: t.isOpeningBalance || undefined,
         })),
         monthlyAssignments: assignmentsMap,
         budgetTemplates: userBudgetTemplates.map((bt) => ({
@@ -411,32 +451,34 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const { budget, categoryGroups: groups, categories: cats } = req.body;
 
-      // Create the budget
-      await storage.createBudget({
-        id: budget.id,
-        userId,
-        name: budget.name,
-        currency: budget.currency,
-        currencyPlacement: budget.currencyPlacement,
-        numberFormat: budget.numberFormat,
-        dateFormat: budget.dateFormat,
-      });
-
-      // Create default category groups
-      for (const g of groups || []) {
-        await storage.createCategoryGroup({ id: g.id, budgetId: budget.id, name: g.name });
-      }
-
-      // Create default categories
-      for (const c of cats || []) {
-        await storage.createCategory({
-          id: c.id,
-          budgetId: budget.id,
-          groupId: c.groupId,
-          name: c.name,
-          goal: c.goal,
+      await storage.transaction(async (tx) => {
+        // Create the budget
+        await tx.createBudget({
+          id: budget.id,
+          userId,
+          name: budget.name,
+          currency: budget.currency,
+          currencyPlacement: budget.currencyPlacement,
+          numberFormat: budget.numberFormat,
+          dateFormat: budget.dateFormat,
         });
-      }
+
+        // Create default category groups
+        for (const g of groups || []) {
+          await tx.createCategoryGroup({ id: g.id, budgetId: budget.id, name: g.name });
+        }
+
+        // Create default categories
+        for (const c of cats || []) {
+          await tx.createCategory({
+            id: c.id,
+            budgetId: budget.id,
+            groupId: c.groupId,
+            name: c.name,
+            goal: c.goal,
+          });
+        }
+      });
 
       res.status(201).json({ id: budget.id });
     } catch (error) {
@@ -487,12 +529,14 @@ export async function registerRoutes(
 
       const { categoryGroups: groups = [], categories: cats = [] } = req.body;
 
-      for (const g of groups) {
-        await storage.createCategoryGroup({ id: g.id, budgetId, name: g.name });
-      }
-      for (const c of cats) {
-        await storage.createCategory({ id: c.id, budgetId, groupId: c.groupId, name: c.name, goal: c.goal });
-      }
+      await storage.transaction(async (tx) => {
+        for (const g of groups) {
+          await tx.createCategoryGroup({ id: g.id, budgetId, name: g.name });
+        }
+        for (const c of cats) {
+          await tx.createCategory({ id: c.id, budgetId, groupId: c.groupId, name: c.name, goal: c.goal });
+        }
+      });
 
       res.json({ ok: true, seeded: true });
     } catch (error) {
@@ -522,57 +566,110 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Entities must belong to the same budget" });
       }
 
-      // Create optional debt repayments group
-      if (categoryGroup) {
-        await storage.createCategoryGroup({
-          id: categoryGroup.id,
-          budgetId: categoryGroup.budgetId,
-          name: categoryGroup.name,
-        });
-      }
+      await storage.transaction(async (tx) => {
+        // Create optional debt repayments group
+        if (categoryGroup) {
+          await tx.createCategoryGroup({
+            id: categoryGroup.id,
+            budgetId: categoryGroup.budgetId,
+            name: categoryGroup.name,
+          });
+        }
 
-      // Create optional linked category for loans
-      if (category) {
-        await storage.createCategory({
-          id: category.id,
-          budgetId: category.budgetId,
-          groupId: category.groupId,
-          name: category.name,
-          goal: category.goal,
-          linkedAccountId: category.linkedAccountId,
-        });
-      }
+        // Create optional linked category for loans
+        if (category) {
+          await tx.createCategory({
+            id: category.id,
+            budgetId: category.budgetId,
+            groupId: category.groupId,
+            name: category.name,
+            goal: category.goal,
+            linkedAccountId: category.linkedAccountId,
+          });
+        }
 
-      await storage.createAccount({
-        id: account.id,
-        budgetId: account.budgetId,
-        name: account.name,
-        type: account.type,
-        balance: account.balance,
-        isActive: account.isActive,
-        interestRate: account.interestRate,
-        monthlyPayment: account.monthlyPayment,
-        originalBalance: account.originalBalance,
-        loanStartDate: account.loanStartDate,
-        linkedCategoryId: account.linkedCategoryId,
+        await tx.createAccount({
+          id: account.id,
+          budgetId: account.budgetId,
+          name: account.name,
+          type: account.type,
+          balance: account.balance,
+          isActive: account.isActive,
+          interestRate: account.interestRate,
+          monthlyPayment: account.monthlyPayment,
+          originalBalance: account.originalBalance,
+          loanStartDate: account.loanStartDate,
+          linkedCategoryId: account.linkedCategoryId,
+        });
+
+        // Create opening balance transaction in the same request so the account row
+        // is guaranteed to exist before the transaction FK is checked.
+        if (openingTransaction) {
+          await tx.createTransaction({
+            id: openingTransaction.id,
+            budgetId: openingTransaction.budgetId,
+            accountId: openingTransaction.accountId,
+            date: openingTransaction.date,
+            payee: openingTransaction.payee,
+            amount: openingTransaction.amount,
+            memo: openingTransaction.memo,
+            cleared: openingTransaction.cleared,
+            isOpeningBalance: true,
+          });
+        }
       });
 
-      // Create opening balance transaction in the same request so the account row
-      // is guaranteed to exist before the transaction FK is checked.
-      if (openingTransaction) {
-        await storage.createTransaction({
-          id: openingTransaction.id,
-          budgetId: openingTransaction.budgetId,
-          accountId: openingTransaction.accountId,
-          date: openingTransaction.date,
-          payee: openingTransaction.payee,
-          amount: openingTransaction.amount,
-          memo: openingTransaction.memo,
-          cleared: openingTransaction.cleared,
-        });
+      res.status(201).json({ id: account.id });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Backfills the shared "Credit Card Payments" category onto credit accounts
+  // that predate this feature: optionally creates the category group/category,
+  // then links every listed account to it, in FK-safe order in one request.
+  app.post("/api/budgets/:budgetId/credit-card-payments/backfill", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const budgetId = req.params.budgetId;
+
+      if (!await verifyBudgetOwnership(userId, budgetId)) {
+        return res.status(403).json({ message: "Forbidden" });
       }
 
-      res.status(201).json({ id: account.id });
+      const { categoryGroup, category, categoryId, accountIds = [] } = req.body;
+
+      if (
+        (categoryGroup && categoryGroup.budgetId !== budgetId) ||
+        (category && category.budgetId !== budgetId)
+      ) {
+        return res.status(400).json({ message: "Entities must belong to the same budget" });
+      }
+
+      await storage.transaction(async (tx) => {
+        if (categoryGroup) {
+          await tx.createCategoryGroup({
+            id: categoryGroup.id,
+            budgetId,
+            name: categoryGroup.name,
+          });
+        }
+
+        if (category) {
+          await tx.createCategory({
+            id: category.id,
+            budgetId,
+            groupId: category.groupId,
+            name: category.name,
+          });
+        }
+
+        for (const accountId of accountIds) {
+          await tx.updateAccount(accountId, budgetId, { linkedCategoryId: categoryId });
+        }
+      });
+
+      res.json({ ok: true });
     } catch (error) {
       next(error);
     }
@@ -741,7 +838,7 @@ export async function registerRoutes(
   app.post("/api/transactions/loan-payment", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { paymentTransaction, interestTransaction, principalTransaction, accountUpdates } = req.body;
+      const { paymentTransaction, interestTransaction, principalTransaction } = req.body;
 
       if (!await verifyBudgetOwnership(userId, paymentTransaction.budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
@@ -763,57 +860,55 @@ export async function registerRoutes(
         }
       }
 
-      // 1. Parent payment transaction (on checking/savings account)
-      await storage.createTransaction({
-        id: paymentTransaction.id,
-        budgetId: paymentTransaction.budgetId,
-        date: paymentTransaction.date,
-        payee: paymentTransaction.payee,
-        categoryId: paymentTransaction.categoryId,
-        accountId: paymentTransaction.accountId,
-        amount: paymentTransaction.amount,
-        memo: paymentTransaction.memo,
-        cleared: paymentTransaction.cleared,
-      });
+      await storage.transaction(async (tx) => {
+        const changes: BalanceChange[] = [];
 
-      // 2. Interest charge on loan (account row guaranteed to exist already)
-      if (interestTransaction) {
-        await storage.createTransaction({
-          id: interestTransaction.id,
-          budgetId: interestTransaction.budgetId,
-          date: interestTransaction.date,
-          payee: interestTransaction.payee,
-          accountId: interestTransaction.accountId,
-          amount: interestTransaction.amount,
-          memo: interestTransaction.memo,
-          cleared: interestTransaction.cleared,
-          autoGeneratedById: interestTransaction.autoGeneratedById,
-        });
-      }
+        // 1. Parent payment transaction (on checking/savings account)
+        changes.push(await tx.createTransaction({
+          id: paymentTransaction.id,
+          budgetId: paymentTransaction.budgetId,
+          date: paymentTransaction.date,
+          payee: paymentTransaction.payee,
+          categoryId: paymentTransaction.categoryId,
+          accountId: paymentTransaction.accountId,
+          amount: paymentTransaction.amount,
+          memo: paymentTransaction.memo,
+          cleared: paymentTransaction.cleared,
+        }));
 
-      // 3. Principal payment on loan
-      if (principalTransaction) {
-        await storage.createTransaction({
-          id: principalTransaction.id,
-          budgetId: principalTransaction.budgetId,
-          date: principalTransaction.date,
-          payee: principalTransaction.payee,
-          accountId: principalTransaction.accountId,
-          amount: principalTransaction.amount,
-          memo: principalTransaction.memo,
-          cleared: principalTransaction.cleared,
-          autoGeneratedById: principalTransaction.autoGeneratedById,
-        });
-      }
-
-      // 4. Update all account balances (paying account + loan account)
-      if (accountUpdates?.length) {
-        for (const au of accountUpdates) {
-          const updateData: Record<string, unknown> = { balance: au.balance };
-          if (au.isActive !== undefined) updateData.isActive = au.isActive;
-          await storage.updateAccount(au.id, paymentTransaction.budgetId, updateData);
+        // 2. Interest charge on loan (account row guaranteed to exist already)
+        if (interestTransaction) {
+          changes.push(await tx.createTransaction({
+            id: interestTransaction.id,
+            budgetId: interestTransaction.budgetId,
+            date: interestTransaction.date,
+            payee: interestTransaction.payee,
+            accountId: interestTransaction.accountId,
+            amount: interestTransaction.amount,
+            memo: interestTransaction.memo,
+            cleared: interestTransaction.cleared,
+            autoGeneratedById: interestTransaction.autoGeneratedById,
+          }));
         }
-      }
+
+        // 3. Principal payment on loan
+        if (principalTransaction) {
+          changes.push(await tx.createTransaction({
+            id: principalTransaction.id,
+            budgetId: principalTransaction.budgetId,
+            date: principalTransaction.date,
+            payee: principalTransaction.payee,
+            accountId: principalTransaction.accountId,
+            amount: principalTransaction.amount,
+            memo: principalTransaction.memo,
+            cleared: principalTransaction.cleared,
+            autoGeneratedById: principalTransaction.autoGeneratedById,
+          }));
+        }
+
+        // 4. Move the balances of the paying account and the loan account
+        await tx.applyBalanceChanges(loanBudgetId, changes);
+      });
 
       res.status(201).json({ id: paymentTransaction.id });
     } catch (error) {
@@ -826,7 +921,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const { budgetId, updates, interestTransactionId, interestUpdates,
-              principalTransactionId, principalUpdates, accountUpdates } = req.body;
+              principalTransactionId, principalUpdates } = req.body;
 
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
@@ -840,25 +935,16 @@ export async function registerRoutes(
         }
       }
 
-      await storage.updateTransaction(req.params.id, budgetId, updates);
-
-      if (interestTransactionId && interestUpdates) {
-        const dbInterest: Record<string, unknown> = { ...interestUpdates };
-        if (typeof dbInterest.amount === 'number') dbInterest.amount = String(dbInterest.amount);
-        await storage.updateTransaction(interestTransactionId, budgetId, dbInterest);
-      }
-      if (principalTransactionId && principalUpdates) {
-        const dbPrincipal: Record<string, unknown> = { ...principalUpdates };
-        if (typeof dbPrincipal.amount === 'number') dbPrincipal.amount = String(dbPrincipal.amount);
-        await storage.updateTransaction(principalTransactionId, budgetId, dbPrincipal);
-      }
-      if (accountUpdates?.length) {
-        for (const au of accountUpdates) {
-          const updateData: Record<string, unknown> = { balance: au.balance };
-          if (au.isActive !== undefined) updateData.isActive = au.isActive;
-          await storage.updateAccount(au.id, budgetId, updateData);
+      await storage.transaction(async (tx) => {
+        const changes = await tx.updateTransaction(req.params.id, budgetId, updates ?? {});
+        if (interestTransactionId && interestUpdates) {
+          changes.push(...await tx.updateTransaction(interestTransactionId, budgetId, interestUpdates));
         }
-      }
+        if (principalTransactionId && principalUpdates) {
+          changes.push(...await tx.updateTransaction(principalTransactionId, budgetId, principalUpdates));
+        }
+        await tx.applyBalanceChanges(budgetId, changes);
+      });
 
       res.json({ ok: true });
     } catch (error) {
@@ -873,7 +959,7 @@ export async function registerRoutes(
       if (parsed.error !== undefined) {
         return res.status(400).json({ message: parsed.error });
       }
-      const { transaction, accountUpdate } = parsed.data;
+      const { transaction } = parsed.data;
       if (!await verifyBudgetOwnership(userId, transaction.budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
@@ -883,16 +969,16 @@ export async function registerRoutes(
       if (transaction.categoryId && !await categoryInBudget(transaction.categoryId, transaction.budgetId)) {
         return res.status(400).json({ message: "Category does not belong to this budget" });
       }
-      await storage.createTransaction({
-        ...transaction,
-        categoryId: transaction.categoryId ?? undefined,
-        memo: transaction.memo ?? undefined,
-        autoGeneratedById: transaction.autoGeneratedById ?? undefined,
+      await storage.transaction(async (tx) => {
+        const change = await tx.createTransaction({
+          ...transaction,
+          categoryId: transaction.categoryId ?? undefined,
+          memo: transaction.memo ?? undefined,
+          autoGeneratedById: transaction.autoGeneratedById ?? undefined,
+          transferId: transaction.transferId ?? undefined,
+        });
+        await tx.applyBalanceChanges(transaction.budgetId, [change]);
       });
-      // Also update the account balance
-      if (accountUpdate) {
-        await storage.updateAccount(accountUpdate.id, transaction.budgetId, { balance: accountUpdate.balance });
-      }
       res.status(201).json({ id: transaction.id });
     } catch (error) {
       next(error);
@@ -902,7 +988,7 @@ export async function registerRoutes(
   app.patch("/api/transactions/:id", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { budgetId, updates, accountUpdates } = req.body;
+      const { budgetId, updates } = req.body;
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
@@ -912,13 +998,10 @@ export async function registerRoutes(
       if (updates?.categoryId && !await categoryInBudget(updates.categoryId, budgetId)) {
         return res.status(400).json({ message: "Category does not belong to this budget" });
       }
-      await storage.updateTransaction(req.params.id, budgetId, updates);
-      // Update affected account balances
-      if (accountUpdates) {
-        for (const au of accountUpdates) {
-          await storage.updateAccount(au.id, budgetId, { balance: au.balance });
-        }
-      }
+      await storage.transaction(async (tx) => {
+        const changes = await tx.updateTransaction(req.params.id, budgetId, updates ?? {});
+        await tx.applyBalanceChanges(budgetId, changes);
+      });
       res.json({ ok: true });
     } catch (error) {
       next(error);
@@ -928,28 +1011,26 @@ export async function registerRoutes(
   app.delete("/api/transactions/:id", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { budgetId, pairedTransactionId, linkedTransactionIds, accountUpdates } = req.body;
+      const { budgetId, pairedTransactionId, linkedTransactionIds } = req.body;
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      // Delete linked children first (avoids any potential FK constraint issues)
-      if (linkedTransactionIds?.length) {
-        for (const lid of linkedTransactionIds) {
-          await storage.deleteTransaction(lid, budgetId);
+      await storage.transaction(async (tx) => {
+        // The storage layer removes the other leg of a transfer and the rest
+        // of a loan payment by itself. The ids from the client still matter for
+        // transfers made before transfer_id existed, which it pairs up itself.
+        const ids = new Set<string>([
+          ...(Array.isArray(linkedTransactionIds) ? linkedTransactionIds : []),
+          req.params.id,
+          ...(pairedTransactionId ? [pairedTransactionId] : []),
+        ]);
+        const changes: BalanceChange[] = [];
+        for (const id of Array.from(ids)) {
+          changes.push(...await tx.deleteTransaction(id, budgetId));
         }
-      }
-      await storage.deleteTransaction(req.params.id, budgetId);
-      if (pairedTransactionId) {
-        await storage.deleteTransaction(pairedTransactionId, budgetId);
-      }
-      // Update affected account balances (includes isActive for loan auto-close reversal)
-      if (accountUpdates) {
-        for (const au of accountUpdates) {
-          const updateData: Record<string, unknown> = { balance: au.balance };
-          if (au.isActive !== undefined) updateData.isActive = au.isActive;
-          await storage.updateAccount(au.id, budgetId, updateData);
-        }
-      }
+        // Reverse the deleted amounts (this also reopens a loan that owes again)
+        await tx.applyBalanceChanges(budgetId, changes);
+      });
       res.json({ ok: true });
     } catch (error) {
       next(error);

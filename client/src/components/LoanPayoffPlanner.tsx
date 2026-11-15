@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { differenceInCalendarMonths, parseISO } from 'date-fns';
 import { Account, Transaction, useStore } from '@/lib/store';
 import {
   calculateAmortization,
@@ -11,7 +12,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart } from 'recharts';
+import { Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, ComposedChart } from 'recharts';
 import { Calculator } from 'lucide-react';
 import { PayoffSimulator } from '@/components/modals/PayoffSimulator';
 
@@ -80,7 +81,7 @@ export function LoanPayoffPlanner({ account, transactions, formatCurrency }: Loa
         account.originalBalance,
         account.interestRate,
         account.monthlyPayment,
-        new Date(account.loanStartDate)
+        parseISO(account.loanStartDate) // local date, not UTC midnight
       );
     } catch (error) {
       console.error('Error calculating original schedule:', error);
@@ -103,11 +104,24 @@ export function LoanPayoffPlanner({ account, transactions, formatCurrency }: Loa
     const data = [];
     const currentMonth = 0; // We start from today
 
+    // The original schedule is counted from the loan's start date and the
+    // projection from today, so line them up by the months already elapsed.
+    const elapsed = account.loanStartDate
+      ? Math.max(0, differenceInCalendarMonths(new Date(), parseISO(account.loanStartDate)))
+      : 0;
+    // Balance the original schedule expects `monthsFromNow` months from today.
+    const originalAt = (monthsFromNow: number): number | null => {
+      if (originalSchedule.length === 0) return null;
+      const paymentsMade = elapsed + monthsFromNow;
+      if (paymentsMade === 0) return account.originalBalance ?? null;
+      return originalSchedule[paymentsMade - 1]?.balance ?? null;
+    };
+
     // Add current balance point
     data.push({
       month: currentMonth,
       current: Math.abs(account.balance),
-      original: null,
+      original: originalAt(0),
       label: 'Now'
     });
 
@@ -118,14 +132,14 @@ export function LoanPayoffPlanner({ account, transactions, formatCurrency }: Loa
         data.push({
           month: index + 1,
           current: row.balance,
-          original: originalSchedule[index]?.balance || null,
+          original: originalAt(index + 1),
           label: row.date
         });
       }
     });
 
     return data;
-  }, [projection, originalSchedule, account.balance]);
+  }, [projection, originalSchedule, account.balance, account.originalBalance, account.loanStartDate]);
 
   if (!projection) {
     return (
@@ -189,7 +203,9 @@ export function LoanPayoffPlanner({ account, transactions, formatCurrency }: Loa
                 {/* Chart */}
                 <div className="h-[300px] mb-4">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={chartData}>
+                    {/* ComposedChart, not AreaChart: an AreaChart only draws <Area>
+                        series and silently skips the dashed <Line>. */}
+                    <ComposedChart data={chartData}>
                       <defs>
                         <linearGradient id="colorCurrent" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
@@ -234,10 +250,11 @@ export function LoanPayoffPlanner({ account, transactions, formatCurrency }: Loa
                           strokeWidth={2}
                           strokeDasharray="5 5"
                           dot={false}
+                          connectNulls
                           name="Original Payment Schedule"
                         />
                       )}
-                    </AreaChart>
+                    </ComposedChart>
                   </ResponsiveContainer>
                 </div>
 

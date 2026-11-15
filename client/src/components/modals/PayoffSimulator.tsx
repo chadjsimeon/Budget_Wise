@@ -15,7 +15,7 @@ import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import {
-  AreaChart,
+  ComposedChart,
   Area,
   XAxis,
   YAxis,
@@ -258,7 +258,9 @@ export function PayoffSimulator({
             {/* Chart */}
             <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={chartData}>
+                {/* ComposedChart, not AreaChart: an AreaChart only draws <Area>
+                    series and silently skips the dashed baseline <Line>. */}
+                <ComposedChart data={chartData}>
                   <defs>
                     <linearGradient id="colorSimulator" x1="0" y1="0" x2="0" y2="1">
                       <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
@@ -304,7 +306,7 @@ export function PayoffSimulator({
                     name="Your Payment"
                     connectNulls
                   />
-                </AreaChart>
+                </ComposedChart>
               </ResponsiveContainer>
             </div>
 

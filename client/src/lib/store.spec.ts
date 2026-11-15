@@ -80,14 +80,15 @@ describe('Budget CRUD', () => {
     expect(newBudget.name).toBe('Second Budget');
     expect(state.currentBudgetId).toBe(newBudget.id);
 
-    // Default category structure: 3 groups
+    // Default category structure: 5 groups
     const newGroups = state.categoryGroups.filter(g => g.budgetId === newBudget.id);
-    expect(newGroups).toHaveLength(3);
-    expect(newGroups.map(g => g.name)).toEqual(['Bills', 'Needs', 'Wants']);
+    expect(newGroups.map(g => g.name)).toEqual([
+      'Monthly Bills', 'Lifestyle', 'Subscriptions', 'Savings', 'Transport',
+    ]);
 
-    // Default categories: 4 + 4 + 5 = 13
+    // Default categories: 5 + 4 + 3 + 2 + 3 = 17
     const newCats = state.categories.filter(c => c.budgetId === newBudget.id);
-    expect(newCats).toHaveLength(13);
+    expect(newCats).toHaveLength(17);
   });
 
   test('switchBudget changes currentBudgetId', () => {
@@ -258,6 +259,101 @@ describe('Account Management', () => {
     addTestAccount({ type: 'savings', name: 'Savings' });
     const state = useStore.getState();
     expect(state.categoryGroups.filter(g => g.name === 'Debt Repayments')).toHaveLength(0);
+  });
+
+  test('addAccount for credit card creates shared Credit Card Payments category', () => {
+    const { addAccount } = useStore.getState();
+    const card = addAccount({ name: 'Visa', type: 'credit', balance: 0, isActive: true });
+
+    const state = useStore.getState();
+    const debtGroup = state.categoryGroups.find(g => g.name === 'Debt Repayments');
+    expect(debtGroup).toBeDefined();
+
+    const linkedCat = state.categories.find(c => c.name === 'Credit Card Payments');
+    expect(linkedCat).toBeDefined();
+    expect(linkedCat!.groupId).toBe(debtGroup!.id);
+    // Unlike loans, the shared category has no reverse link to a single account
+    expect(linkedCat!.linkedAccountId).toBeUndefined();
+
+    const cardAccount = state.accounts.find(a => a.id === card.id);
+    expect(cardAccount!.linkedCategoryId).toBe(linkedCat!.id);
+  });
+
+  test('addAccount for second credit card reuses the same Credit Card Payments category', () => {
+    const { addAccount } = useStore.getState();
+    const card1 = addAccount({ name: 'Visa', type: 'credit', balance: 0, isActive: true });
+    const card2 = addAccount({ name: 'Amex', type: 'credit', balance: 0, isActive: true });
+
+    const state = useStore.getState();
+    expect(state.categories.filter(c => c.name === 'Credit Card Payments')).toHaveLength(1);
+
+    const account1 = state.accounts.find(a => a.id === card1.id)!;
+    const account2 = state.accounts.find(a => a.id === card2.id)!;
+    expect(account1.linkedCategoryId).toBe(account2.linkedCategoryId);
+  });
+
+  test('deleteAccount for one of two credit cards keeps the shared category', () => {
+    const { addAccount, deleteAccount } = useStore.getState();
+    const card1 = addAccount({ name: 'Visa', type: 'credit', balance: 0, isActive: true });
+    addAccount({ name: 'Amex', type: 'credit', balance: 0, isActive: true });
+    const categoryId = useStore.getState().accounts.find(a => a.id === card1.id)!.linkedCategoryId!;
+
+    deleteAccount(card1.id);
+
+    const state = useStore.getState();
+    expect(state.categories.find(c => c.id === categoryId)).toBeDefined();
+  });
+
+  test('deleteAccount for the last credit card removes the shared category', () => {
+    const { addAccount, deleteAccount } = useStore.getState();
+    const card = addAccount({ name: 'Visa', type: 'credit', balance: 0, isActive: true });
+    const categoryId = useStore.getState().accounts.find(a => a.id === card.id)!.linkedCategoryId!;
+
+    deleteAccount(card.id);
+
+    const state = useStore.getState();
+    expect(state.categories.find(c => c.id === categoryId)).toBeUndefined();
+  });
+
+  test('deleteCategory unlinks every credit card that shared it', () => {
+    const { addAccount, deleteCategory } = useStore.getState();
+    const card1 = addAccount({ name: 'Visa', type: 'credit', balance: 0, isActive: true });
+    const card2 = addAccount({ name: 'Amex', type: 'credit', balance: 0, isActive: true });
+    const categoryId = useStore.getState().accounts.find(a => a.id === card1.id)!.linkedCategoryId!;
+
+    deleteCategory(categoryId);
+
+    const state = useStore.getState();
+    expect(state.accounts.find(a => a.id === card1.id)!.linkedCategoryId).toBeUndefined();
+    expect(state.accounts.find(a => a.id === card2.id)!.linkedCategoryId).toBeUndefined();
+  });
+
+  test('backfillCreditCardPaymentCategories links pre-existing credit accounts', () => {
+    const { addAccount, backfillCreditCardPaymentCategories } = useStore.getState();
+    // Simulate a credit account that predates this feature — no linkedCategoryId
+    const card = addAccount({ name: 'Old Card', type: 'checking', balance: 0, isActive: true });
+    useStore.setState({
+      accounts: useStore.getState().accounts.map(a =>
+        a.id === card.id ? { ...a, type: 'credit' as const, linkedCategoryId: undefined } : a
+      ),
+    });
+
+    backfillCreditCardPaymentCategories();
+
+    const state = useStore.getState();
+    const linkedCat = state.categories.find(c => c.name === 'Credit Card Payments');
+    expect(linkedCat).toBeDefined();
+    expect(state.accounts.find(a => a.id === card.id)!.linkedCategoryId).toBe(linkedCat!.id);
+  });
+
+  test('backfillCreditCardPaymentCategories is a no-op when nothing needs linking', () => {
+    const { backfillCreditCardPaymentCategories } = useStore.getState();
+    addTestAccount({ type: 'checking' });
+
+    backfillCreditCardPaymentCategories();
+
+    const state = useStore.getState();
+    expect(state.categories.filter(c => c.name === 'Credit Card Payments')).toHaveLength(0);
   });
 });
 

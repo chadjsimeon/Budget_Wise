@@ -1,0 +1,71 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Type check, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20 # matches the Dockerfile
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:ci
+      - run: npm run build
+
+  migrations:
+    name: Migrations apply to an empty database
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: wantnot_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/wantnot_ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # Several migrations are hand-edited, so prove they run from scratch,
+      # that running them again is a no-op, and that the result matches
+      # shared/schema.ts.
+      - run: npx drizzle-kit migrate
+      - run: npx drizzle-kit migrate
+      - run: npm run db:drift
+      # Fails if shared/schema.ts was changed without generating a migration.
+      - name: Schema changes have a migration
+        run: |
+          npx drizzle-kit generate --name ci_uncommitted_schema_change
+          if [ -n "$(git status --porcelain migrations)" ]; then
+            echo "::error::shared/schema.ts has changes with no migration. Run 'npm run db:generate' and commit the result."
+            git status --short migrations
+            exit 1
+          fi

@@ -74,10 +74,10 @@ export default function LoginPage() {
       <Card className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
-            <div className="w-16 h-16 bg-white rounded-lg flex items-center justify-center shadow-lg p-2">
+            <div className="w-16 h-16 rounded-full overflow-hidden shadow-lg">
               <img
-                src="/tt-coat-of-arms.png"
-                alt="Trinidad and Tobago Coat of Arms"
+                src="/favicon.svg"
+                alt="WantNot"
                 className="w-full h-full object-contain"
               />
             </div>

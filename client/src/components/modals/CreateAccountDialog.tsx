@@ -99,7 +99,13 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
 
       // For loans and credit cards, allow editing balance and loan-specific fields
       if (account.type === 'loan' || account.type === 'credit') {
-        updates.balance = -Math.abs(balanceAmount); // Store as negative
+        // Only send the balance when it was actually edited. It is otherwise
+        // maintained by the server from transactions, and resending the value
+        // this form was opened with would overwrite newer activity.
+        const editedBalance = -Math.abs(balanceAmount); // Store as negative
+        if (editedBalance !== -Math.abs(account.balance)) {
+          updates.balance = editedBalance;
+        }
         if (account.type === 'loan') {
           updates.interestRate = parseFloat(formData.interestRate) || 0;
           updates.monthlyPayment = parseFloat(formData.monthlyPayment) || 0;
@@ -238,6 +244,15 @@ export function CreateAccountDialog({ trigger, defaultType, open: controlledOpen
               />
               <span className="text-sm text-slate-500 font-medium min-w-[40px]">%</span>
             </div>
+          </div>
+        )}
+
+        {/* Show informational notice for new credit cards only */}
+        {!isEditMode && formData.type === 'credit' && (
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-blue-900 leading-relaxed">
+              💡 Payments toward this card will be tracked in a shared "Credit Card Payments" budget category — it'll be created automatically if it doesn't already exist.
+            </p>
           </div>
         )}
 

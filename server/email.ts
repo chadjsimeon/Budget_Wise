@@ -12,6 +12,10 @@ export async function sendPasswordResetEmail(
   resetUrl: string
 ): Promise<void> {
   if (!resend) {
+    if (process.env.NODE_ENV === "production") {
+      // Never write a working reset link into production logs.
+      throw new Error("RESEND_API_KEY is not set; password reset email not sent");
+    }
     console.log(
       `\n========================================\n[DEV] No RESEND_API_KEY configured — email not sent.\n[DEV] Password reset link for ${to}:\n${resetUrl}\n========================================\n`
     );

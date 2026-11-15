@@ -1,4 +1,3 @@
-import { randomBytes } from "crypto";
 import passport from "passport";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
@@ -13,10 +12,6 @@ declare global {
       email: string;
     }
   }
-}
-
-export function generateResetToken(): string {
-  return randomBytes(32).toString("hex");
 }
 
 export function setupAuth(app: Express) {

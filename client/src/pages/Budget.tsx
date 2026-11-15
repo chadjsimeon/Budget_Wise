@@ -54,7 +54,7 @@ import { CategoryGroupSection } from '@/components/CategoryGroupSection';
 import { HelpBadge } from '@/components/onboarding/HelpBadge';
 import { BillRemindersPanel } from '@/components/BillRemindersPanel';
 
-type FilterType = 'all' | 'underfunded' | 'overfunded' | 'available';
+type FilterType = 'all' | 'overspent' | 'underfunded' | 'available';
 
 export default function BudgetPage() {
   const {
@@ -303,8 +303,8 @@ export default function BudgetPage() {
 
   // Calculate filter counts, month summary, and cost to be me
   const { filterCounts, monthSummary, costToBeMe } = useMemo(() => {
+    let overspentCount = 0;
     let underfundedCount = 0;
-    let overfundedCount = 0;
     let availableCount = 0;
     let totalAssigned = 0;
     let totalActivity = 0;
@@ -321,15 +321,15 @@ export default function BudgetPage() {
       totalAvailable += available;
       if (cat.goal) totalGoals += cat.goal;
 
-      if (available < 0) underfundedCount++;
-      if (available > assigned && assigned > 0) overfundedCount++;
+      if (available < 0) overspentCount++;
+      if (cat.goal && assigned < cat.goal) underfundedCount++;
       if (available > 0) availableCount++;
     });
 
     return {
       filterCounts: {
+        overspent: overspentCount,
         underfunded: underfundedCount,
-        overfunded: overfundedCount,
         available: availableCount
       },
       monthSummary: {
@@ -485,27 +485,27 @@ export default function BudgetPage() {
               All
             </button>
             <button
-              onClick={() => setFilter('underfunded')}
+              onClick={() => setFilter('overspent')}
               className={cn(
                 "relative py-3 px-1 text-sm font-medium transition-colors border-b-2 -mb-px flex items-center gap-2",
-                filter === 'underfunded'
+                filter === 'overspent'
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-slate-600 hover:text-slate-900"
               )}
             >
               <span className="w-2 h-2 rounded-full bg-red-500"></span>
-              <span>{filterCounts.underfunded} Overspent</span>
+              <span>{filterCounts.overspent} Overspent</span>
             </button>
             <button
-              onClick={() => setFilter('overfunded')}
+              onClick={() => setFilter('underfunded')}
               className={cn(
                 "relative py-3 px-1 text-sm font-medium transition-colors border-b-2 -mb-px",
-                filter === 'overfunded'
+                filter === 'underfunded'
                   ? "border-blue-600 text-blue-600"
                   : "border-transparent text-slate-600 hover:text-slate-900"
               )}
             >
-              Underfunded
+              Underfunded ({filterCounts.underfunded})
             </button>
             <button
               onClick={() => setFilter('available')}
@@ -545,7 +545,7 @@ export default function BudgetPage() {
 
         {/* Categories Content */}
         <div className="flex-1 overflow-auto bg-white">
-          <div className="max-w-5xl mx-auto">
+          <div className="budget-table max-w-5xl mx-auto">
             {/* Assign-money nudge banner */}
             {budgetAccounts.length > 0 && readyToAssign > 0 && monthSummary.assigned === 0 && (
               <div className="mx-4 mt-4 mb-0 flex items-start gap-2 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-sm text-blue-800">
@@ -613,7 +613,7 @@ export default function BudgetPage() {
             </div>
 
             {/* Table Header */}
-            <div className="sticky top-0 bg-slate-50 border-b border-slate-200 grid grid-cols-[1fr_100px_100px] md:grid-cols-[1fr_140px_140px_140px_140px] gap-2 md:gap-4 px-4 md:px-6 py-3">
+            <div className="budget-table-row sticky top-0 bg-slate-50 border-b border-slate-200 px-4 md:px-6 py-3">
               <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                 Category
                 <HelpBadge
@@ -661,8 +661,8 @@ export default function BudgetPage() {
                 const available = getCategoryAvailable(currentMonth, c.id);
                 const assigned = monthlyAssignments[currentBudgetId]?.[currentMonth]?.[c.id] || 0;
 
-                if (filter === 'underfunded') return available < 0;
-                if (filter === 'overfunded') return available < assigned;
+                if (filter === 'overspent') return available < 0;
+                if (filter === 'underfunded') return !!c.goal && assigned < c.goal;
                 if (filter === 'available') return available > 0;
                 return true;
               });

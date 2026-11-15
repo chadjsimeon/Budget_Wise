@@ -143,10 +143,10 @@ export function Sidebar({ className, onNavigate }: { className?: string; onNavig
       {/* Logo Area */}
       <div className="p-6">
         <div className="flex items-center gap-3 font-bold text-xl text-white">
-          <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center shadow-lg p-1">
+          <div className="w-12 h-12 rounded-full overflow-hidden shadow-lg">
             <img
-              src="/tt-coat-of-arms.png"
-              alt="Trinidad and Tobago Coat of Arms"
+              src="/favicon.svg"
+              alt="WantNot"
               className="w-full h-full object-contain"
             />
           </div>

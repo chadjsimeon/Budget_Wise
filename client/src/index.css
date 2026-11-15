@@ -191,3 +191,27 @@
 .currency-neutral {
   @apply text-gray-500 dark:text-gray-400;
 }
+
+/* Budget table grid.
+   Single source of truth for the budget table's columns. The wrapper defines
+   the track list; the header row, the category rows and the collapsed-group
+   subtotal rows all inherit it through .budget-table-row, however deeply they
+   are nested. Cells hidden below md are display:none and so are skipped by
+   grid placement, which is why the narrow track list has exactly three tracks. */
+.budget-table {
+  --budget-table-columns: 1fr 100px 100px;
+  --budget-table-gap: 0.5rem;
+}
+
+@media (min-width: 768px) {
+  .budget-table {
+    --budget-table-columns: 1fr 140px 140px 140px 140px;
+    --budget-table-gap: 1rem;
+  }
+}
+
+.budget-table-row {
+  display: grid;
+  grid-template-columns: var(--budget-table-columns);
+  gap: var(--budget-table-gap);
+}

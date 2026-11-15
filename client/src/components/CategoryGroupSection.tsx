@@ -114,7 +114,7 @@ export function CategoryGroupSection({
 
       {/* Subtotals when collapsed */}
       {!isExpanded && (
-        <div className="grid grid-cols-[1fr_100px_100px] md:grid-cols-[1fr_140px_140px_140px_140px] gap-2 md:gap-4 px-4 md:px-6 py-3 bg-slate-50 border-b border-slate-200">
+        <div className="budget-table-row px-4 md:px-6 py-3 bg-slate-50 border-b border-slate-200">
           <div className="text-sm font-medium text-slate-500 pl-6">
             Group Total ({categories.length} {categories.length === 1 ? 'category' : 'categories'})
           </div>
@@ -201,7 +201,7 @@ function CategoryRow({
   return (
     <div
       ref={setNodeRef}
-      className="grid grid-cols-[1fr_100px_100px] md:grid-cols-[1fr_140px_140px_140px_140px] gap-2 md:gap-4 px-4 md:px-6 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 group"
+      className="budget-table-row px-4 md:px-6 py-3 hover:bg-slate-50 border-b border-slate-100 last:border-0 group"
       style={{ opacity: isDragging ? 0.5 : 1, cursor: isDragging ? 'grabbing' : 'default' }}
     >
       {/* Category Name */}
@@ -278,7 +278,7 @@ function CategoryRow({
       </div>
 
       {/* Available */}
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex items-center justify-end gap-2 min-w-0">
         {available < 0 ? (
           <Badge
             variant="destructive"
@@ -300,7 +300,7 @@ function CategoryRow({
             <Button
               variant="ghost"
               size="icon"
-              className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-blue-600"
+              className="h-7 w-7 hidden group-hover:flex text-slate-400 hover:text-blue-600"
             >
               <ArrowRightLeft className="w-3.5 h-3.5" />
             </Button>
@@ -309,7 +309,7 @@ function CategoryRow({
         <Button
           variant="ghost"
           size="icon"
-          className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-red-600"
+          className="h-7 w-7 hidden group-hover:flex text-slate-400 hover:text-red-600"
           onClick={() => onDeleteCategory(category.id)}
         >
           <Trash2 className="w-3.5 h-3.5" />
