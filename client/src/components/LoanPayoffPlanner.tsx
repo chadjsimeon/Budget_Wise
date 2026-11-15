@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { parseISO } from 'date-fns';
 import { Account, Transaction, useStore } from '@/lib/store';
 import {
   calculateAmortization,
@@ -80,7 +81,7 @@ export function LoanPayoffPlanner({ account, transactions, formatCurrency }: Loa
         account.originalBalance,
         account.interestRate,
         account.monthlyPayment,
-        new Date(account.loanStartDate)
+        parseISO(account.loanStartDate) // local date, not UTC midnight
       );
     } catch (error) {
       console.error('Error calculating original schedule:', error);

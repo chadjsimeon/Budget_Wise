@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRoute } from 'wouter';
+import { useLocation, useRoute } from 'wouter';
 import { useStore } from '@/lib/store';
 import { useCurrencyFormatter } from '@/lib/currency';
 import { format, parse } from 'date-fns';
@@ -76,6 +76,7 @@ interface AccountsPageProps {
 
 export default function AccountsPage({ triggerNewTransaction, onTransactionTriggered }: AccountsPageProps = {}) {
   const [match, params] = useRoute('/accounts/:id');
+  const [, setLocation] = useLocation();
   const accountId = params?.id;
 
   const {
@@ -84,6 +85,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
     transactions: allTransactions,
     categories: allCategories,
     addTransaction,
+    addTransfer,
     updateTransaction,
     deleteTransaction,
     deleteAccount
@@ -126,7 +128,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
 
       switch (sortField) {
         case 'date':
-          compareResult = new Date(a.date).getTime() - new Date(b.date).getTime();
+          compareResult = a.date.localeCompare(b.date); // "YYYY-MM-DD" sorts as text
           break;
         case 'payee':
           compareResult = a.payee.localeCompare(b.payee);
@@ -179,9 +181,12 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
   const [selectedTxIds, setSelectedTxIds] = useState<Set<string>>(new Set());
   const [isBulkEditOpen, setIsBulkEditOpen] = useState(false);
   const [isBulkDeleteOpen, setIsBulkDeleteOpen] = useState(false);
-  const [bulkEditData, setBulkEditData] = useState({
-    categoryId: '',
-    cleared: false
+  // Both fields default to "leave unchanged" so applying one never touches the other.
+  type BulkCleared = 'unchanged' | 'cleared' | 'uncleared';
+  const BULK_UNCHANGED = 'unchanged';
+  const [bulkEditData, setBulkEditData] = useState<{ categoryId: string; cleared: BulkCleared }>({
+    categoryId: BULK_UNCHANGED,
+    cleared: 'unchanged'
   });
 
   const handleAddTransaction = () => {
@@ -200,27 +205,19 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
         return;
       }
 
-      const dateStr = format(newTx.date, 'yyyy-MM-dd');
-      const transferMemo = newTx.memo || `Transfer to ${accounts.find(a => a.id === newTx.toAccountId)?.name}`;
+      if (newTx.accountId === newTx.toAccountId) {
+        toast({ title: "Same account", description: "Please choose two different accounts for a transfer", variant: "destructive" });
+        return;
+      }
 
-      // Create outflow transaction in source account
-      addTransaction({
-        accountId: newTx.accountId,
-        date: dateStr,
-        payee: `Transfer to ${accounts.find(a => a.id === newTx.toAccountId)?.name}`,
-        amount: -Math.abs(amount),
-        memo: transferMemo,
-        cleared: false
-      });
-
-      // Create inflow transaction in destination account
-      addTransaction({
-        accountId: newTx.toAccountId,
-        date: dateStr,
-        payee: `Transfer from ${accounts.find(a => a.id === newTx.accountId)?.name}`,
-        amount: Math.abs(amount),
-        memo: transferMemo,
-        cleared: false
+      // Creates both legs as a linked pair. A payment to a credit card is
+      // categorised against its "Credit Card Payments" category.
+      addTransfer({
+        fromAccountId: newTx.accountId,
+        toAccountId: newTx.toAccountId,
+        date: format(newTx.date, 'yyyy-MM-dd'),
+        amount,
+        memo: newTx.memo || undefined,
       });
     } else {
       // Handle regular income/expense transaction
@@ -314,7 +311,9 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
       setDeletingAccountId(null);
       // Redirect to all accounts view after deleting current account
       if (deletingAccountId === accountId) {
-        window.location.href = '/transactions';
+        // Client-side navigation: a full page load here would race the sync
+        // of the delete that was just queued.
+        setLocation('/transactions');
       }
     }
   };
@@ -356,20 +355,22 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
   const handleBulkEdit = () => {
     if (selectedTxIds.size === 0) return;
 
-    // Apply bulk edits to all selected transactions
-    selectedTxIds.forEach(txId => {
-      const updates: any = {};
-      if (bulkEditData.categoryId) {
-        updates.categoryId = bulkEditData.categoryId;
-      }
-      updates.cleared = bulkEditData.cleared;
+    // Only the fields that were actually chosen are written.
+    const updates: { categoryId?: string; cleared?: boolean } = {};
+    if (bulkEditData.categoryId !== BULK_UNCHANGED) {
+      updates.categoryId = bulkEditData.categoryId;
+    }
+    if (bulkEditData.cleared !== 'unchanged') {
+      updates.cleared = bulkEditData.cleared === 'cleared';
+    }
 
-      updateTransaction(txId, updates);
-    });
+    if (Object.keys(updates).length > 0) {
+      selectedTxIds.forEach(txId => updateTransaction(txId, updates));
+    }
 
     setSelectedTxIds(new Set());
     setIsBulkEditOpen(false);
-    setBulkEditData({ categoryId: '', cleared: false });
+    setBulkEditData({ categoryId: BULK_UNCHANGED, cleared: 'unchanged' });
   };
 
   const handleClearSelection = () => {
@@ -743,7 +744,7 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
                         <SelectValue placeholder="Leave unchanged" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">Leave unchanged</SelectItem>
+                        <SelectItem value={BULK_UNCHANGED}>Leave unchanged</SelectItem>
                         {categories.map(cat => (
                           <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                         ))}
@@ -752,16 +753,19 @@ export default function AccountsPage({ triggerNewTransaction, onTransactionTrigg
                   </div>
                   <div className="grid grid-cols-4 items-center gap-4">
                     <Label htmlFor="bulk-cleared" className="text-right">Cleared</Label>
-                    <div className="col-span-3 flex items-center gap-2">
-                      <Checkbox
-                        id="bulk-cleared"
-                        checked={bulkEditData.cleared}
-                        onCheckedChange={(checked) => setBulkEditData({ ...bulkEditData, cleared: checked === true })}
-                      />
-                      <Label htmlFor="bulk-cleared" className="text-sm font-normal cursor-pointer">
-                        Mark as cleared
-                      </Label>
-                    </div>
+                    <Select
+                      value={bulkEditData.cleared}
+                      onValueChange={(val) => setBulkEditData({ ...bulkEditData, cleared: val as BulkCleared })}
+                    >
+                      <SelectTrigger id="bulk-cleared" className="col-span-3">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="unchanged">Leave unchanged</SelectItem>
+                        <SelectItem value="cleared">Mark as cleared</SelectItem>
+                        <SelectItem value="uncleared">Mark as not cleared</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
                 <DialogFooter>
