@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
 import { storage, type BalanceChange } from "./storage";
-import { generateResetToken } from "./auth";
+import { generateResetToken, hashResetToken, resetLinkBase } from "./resetToken";
 import { hashPassword, verifyPassword } from "./password";
 import {
   registerSchema,
@@ -74,6 +74,12 @@ async function groupInBudget(groupId: unknown, budgetId: string): Promise<boolea
     .where(and(eq(categoryGroups.id, groupId), eq(categoryGroups.budgetId, budgetId)))
     .limit(1);
   return result.length > 0;
+}
+
+// Hashed once, on first use, with the same cost as real password hashes.
+let dummyPasswordHash: Promise<string> | undefined;
+function getDummyPasswordHash(): Promise<string> {
+  return (dummyPasswordHash ??= hashPassword(crypto.randomUUID()));
 }
 
 const authLimiter = rateLimit({
@@ -188,11 +194,13 @@ export async function registerRoutes(
       const { email: normalizedEmail, password } = parsed.data;
 
       const user = await storage.getUserByEmail(normalizedEmail);
-      if (!user) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
-      const { ok, needsRehash } = await verifyPassword(password, user.password);
-      if (!ok) {
+      // An unknown email still pays for a bcrypt comparison, so response time
+      // doesn't reveal which addresses have accounts.
+      const { ok, needsRehash } = await verifyPassword(
+        password,
+        user?.password ?? (await getDummyPasswordHash()),
+      );
+      if (!user || !ok) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
       if (needsRehash) {
@@ -208,30 +216,36 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/auth/forgot-password", forgotPasswordLimiter, async (req, res, next) => {
-    try {
-      const parsed = parseBody(forgotPasswordSchema, req.body);
-      if (parsed.error !== undefined) {
-        return res.status(400).json({ message: parsed.error });
+  app.post("/api/auth/forgot-password", forgotPasswordLimiter, (req, res) => {
+    const parsed = parseBody(forgotPasswordSchema, req.body);
+    if (parsed.error !== undefined) {
+      return res.status(400).json({ message: parsed.error });
+    }
+    const { email: normalizedEmail } = parsed.data;
+    const baseUrl = resetLinkBase(process.env, `${req.protocol}://${req.get("host")}`);
+
+    // Answer before doing any of the work: the response, its status and its
+    // timing are then identical whether or not the address has an account,
+    // and whether or not the email could be sent.
+    res.json({ message: "If an account exists with that email, a reset link has been sent." });
+
+    void (async () => {
+      if (!baseUrl) {
+        console.error("[auth] APP_URL is not set; password reset email not sent");
+        return;
       }
-      const { email: normalizedEmail } = parsed.data;
       const token = generateResetToken();
       const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
       // Only email actual account holders — mailing arbitrary addresses would
       // make this endpoint an open spam relay through our sending domain.
-      const userExists = await storage.setResetToken(normalizedEmail, token, expiresAt);
+      const userExists = await storage.setResetToken(normalizedEmail, hashResetToken(token), expiresAt);
       if (userExists) {
-        const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
-        const resetUrl = `${baseUrl}/reset-password?token=${token}`;
-        await sendPasswordResetEmail(normalizedEmail, resetUrl);
+        await sendPasswordResetEmail(normalizedEmail, `${baseUrl}/reset-password?token=${token}`);
       }
-
-      // Same response either way to avoid email enumeration
-      res.json({ message: "If an account exists with that email, a reset link has been sent." });
-    } catch (error) {
-      next(error);
-    }
+    })().catch((error) => {
+      console.error("[auth] password reset request failed:", error);
+    });
   });
 
   app.post("/api/auth/reset-password", async (req, res, next) => {
@@ -241,13 +255,24 @@ export async function registerRoutes(
         return res.status(400).json({ message: parsed.error });
       }
       const { token, password } = parsed.data;
+      const tokenHash = hashResetToken(token);
 
-      const user = await storage.getUserByResetToken(token);
-      if (!user) {
+      // Cheap check first so a bad token doesn't cost a bcrypt hash.
+      if (!(await storage.getUserByResetToken(tokenHash))) {
         return res.status(400).json({ message: "Invalid or expired reset link" });
       }
 
-      await storage.updatePassword(user.id, await hashPassword(password));
+      const hashedPassword = await hashPassword(password);
+      const userId = await storage.transaction(async (tx) => {
+        const id = await tx.resetPasswordWithToken(tokenHash, hashedPassword);
+        // Whoever knew the old password is signed out everywhere.
+        if (id) await tx.deleteUserSessions(id);
+        return id;
+      });
+      if (!userId) {
+        return res.status(400).json({ message: "Invalid or expired reset link" });
+      }
+
       res.json({ message: "Password has been reset. You can now sign in." });
     } catch (error) {
       next(error);

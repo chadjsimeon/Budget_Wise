@@ -65,7 +65,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "jsdom",
-    setupFiles: ["./client/src/test/setup.ts"],
+    setupFiles: [path.resolve(import.meta.dirname, "client", "src", "test", "setup.ts")],
     css: false,
     // Discover both client specs and the server specs (which opt into the node
     // environment per-file). Paths are relative to the vite root (client/).

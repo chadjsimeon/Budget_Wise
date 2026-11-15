@@ -16,7 +16,7 @@ import { eq, and, gt, sql } from "drizzle-orm";
 import { db as rootDb } from "./db";
 
 /** The root connection pool or an open transaction — both run queries. */
-type Executor = Pick<typeof rootDb, "select" | "insert" | "update" | "delete">;
+type Executor = Pick<typeof rootDb, "execute" | "select" | "insert" | "update" | "delete">;
 
 /**
  * Whitelist the columns an update may touch. Request bodies reach the update
@@ -69,8 +69,13 @@ export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
-  setResetToken(email: string, token: string, expiresAt: Date): Promise<boolean>;
-  getUserByResetToken(token: string): Promise<User | undefined>;
+  /** Reset tokens are stored and looked up by their hash, never in the clear. */
+  setResetToken(email: string, tokenHash: string, expiresAt: Date): Promise<boolean>;
+  getUserByResetToken(tokenHash: string): Promise<User | undefined>;
+  /** Sets the password and spends the token in one statement. Returns the user id, or undefined if the token was no longer valid. */
+  resetPasswordWithToken(tokenHash: string, hashedPassword: string): Promise<string | undefined>;
+  /** Signs the user out everywhere. */
+  deleteUserSessions(userId: string): Promise<void>;
   updatePassword(userId: string, hashedPassword: string): Promise<void>;
 
   // Budgets
@@ -228,22 +233,45 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async setResetToken(email: string, token: string, expiresAt: Date): Promise<boolean> {
+  async setResetToken(email: string, tokenHash: string, expiresAt: Date): Promise<boolean> {
     const result = await this.db.update(users)
-      .set({ resetToken: token, resetTokenExpiresAt: expiresAt })
+      .set({ resetToken: tokenHash, resetTokenExpiresAt: expiresAt })
       .where(eq(users.email, email))
       .returning({ id: users.id });
     return result.length > 0;
   }
 
-  async getUserByResetToken(token: string): Promise<User | undefined> {
+  async getUserByResetToken(tokenHash: string): Promise<User | undefined> {
     const result = await this.db.select().from(users)
       .where(and(
-        eq(users.resetToken, token),
+        eq(users.resetToken, tokenHash),
         gt(users.resetTokenExpiresAt, new Date()),
       ))
       .limit(1);
     return result[0];
+  }
+
+  async resetPasswordWithToken(tokenHash: string, hashedPassword: string): Promise<string | undefined> {
+    // The token check lives in the WHERE clause so two requests racing with the
+    // same link can't both succeed.
+    const result = await this.db.update(users)
+      .set({ password: hashedPassword, resetToken: null, resetTokenExpiresAt: null })
+      .where(and(
+        eq(users.resetToken, tokenHash),
+        gt(users.resetTokenExpiresAt, new Date()),
+      ))
+      .returning({ id: users.id });
+    return result[0]?.id;
+  }
+
+  async deleteUserSessions(userId: string): Promise<void> {
+    // The session table belongs to connect-pg-simple, which creates it on first
+    // use, so it may not exist yet on a fresh database.
+    const exists = await this.db.execute(sql`SELECT to_regclass('public.session') AS name`);
+    if (!exists.rows[0]?.name) return;
+    await this.db.execute(
+      sql`DELETE FROM "session" WHERE sess->'passport'->>'user' = ${userId}`,
+    );
   }
 
   async updatePassword(userId: string, hashedPassword: string): Promise<void> {
