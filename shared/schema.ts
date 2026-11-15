@@ -22,6 +22,7 @@ import { z } from "zod";
 export const accountTypeEnum = pgEnum("account_type", [
   "checking",
   "savings",
+  "cash",
   "credit",
   "loan",
 ]);
@@ -322,7 +323,7 @@ export const insertBudgetSchema = createInsertSchema(budgets, {
 }).omit({ id: true, createdAt: true });
 
 export const insertAccountSchema = createInsertSchema(accounts, {
-  type: z.enum(['checking', 'savings', 'credit', 'loan']),
+  type: z.enum(['checking', 'savings', 'cash', 'credit', 'loan']),
   balance: z.number(),
 }).omit({ id: true, budgetId: true, isActive: true });
 

@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import rateLimit from "express-rate-limit";
-import { storage } from "./storage";
+import { storage, type BalanceChange } from "./storage";
 import { generateResetToken } from "./auth";
 import { hashPassword, verifyPassword } from "./password";
 import {
@@ -134,37 +134,41 @@ export async function registerRoutes(
         return res.status(409).json({ message: "An account with this email already exists" });
       }
 
-      const user = await storage.createUser({
-        email: normalizedEmail,
-        password: await hashPassword(password),
-      });
+      const user = await storage.transaction(async (tx) => {
+        const created = await tx.createUser({
+          email: normalizedEmail,
+          password: await hashPassword(password),
+        });
 
-      // Create a default budget with starter categories for new users
-      const budgetId = crypto.randomUUID();
-      await storage.createBudget({
-        id: budgetId,
-        userId: user.id,
-        name: "My Budget",
-        currency: "TTD",
-        currencyPlacement: "before",
-        numberFormat: "1,234.56",
-        dateFormat: "MM/DD/YYYY",
-      });
+        // Create a default budget with starter categories for new users
+        const budgetId = crypto.randomUUID();
+        await tx.createBudget({
+          id: budgetId,
+          userId: created.id,
+          name: "My Budget",
+          currency: "TTD",
+          currencyPlacement: "before",
+          numberFormat: "1,234.56",
+          dateFormat: "MM/DD/YYYY",
+        });
 
-      const DEFAULT_GROUPS = [
-        { name: 'Monthly Bills', cats: ['Rent/Mortgage', 'Electricity', 'Water', 'Internet', 'Phone'] },
-        { name: 'Lifestyle',     cats: ['Groceries', 'Dining Out', 'Gym', 'Entertainment'] },
-        { name: 'Transport',     cats: ['Fuel', 'Car Insurance', 'Car Maintenance'] },
-        { name: 'Subscriptions', cats: ['Netflix', 'Amazon Prime', 'Spotify'] },
-        { name: 'Savings',       cats: ['Emergency Fund', 'Vacation'] },
-      ];
-      for (const group of DEFAULT_GROUPS) {
-        const groupId = crypto.randomUUID();
-        await storage.createCategoryGroup({ id: groupId, budgetId, name: group.name });
-        for (const catName of group.cats) {
-          await storage.createCategory({ id: crypto.randomUUID(), budgetId, groupId, name: catName });
+        const DEFAULT_GROUPS = [
+          { name: 'Monthly Bills', cats: ['Rent/Mortgage', 'Electricity', 'Water', 'Internet', 'Phone'] },
+          { name: 'Lifestyle',     cats: ['Groceries', 'Dining Out', 'Gym', 'Entertainment'] },
+          { name: 'Transport',     cats: ['Fuel', 'Car Insurance', 'Car Maintenance'] },
+          { name: 'Subscriptions', cats: ['Netflix', 'Amazon Prime', 'Spotify'] },
+          { name: 'Savings',       cats: ['Emergency Fund', 'Vacation'] },
+        ];
+        for (const group of DEFAULT_GROUPS) {
+          const groupId = crypto.randomUUID();
+          await tx.createCategoryGroup({ id: groupId, budgetId, name: group.name });
+          for (const catName of group.cats) {
+            await tx.createCategory({ id: crypto.randomUUID(), budgetId, groupId, name: catName });
+          }
         }
-      }
+
+        return created;
+      });
 
       req.logIn({ id: user.id, email: user.email }, (loginErr) => {
         if (loginErr) return next(loginErr);
@@ -411,32 +415,34 @@ export async function registerRoutes(
       const userId = req.user!.id;
       const { budget, categoryGroups: groups, categories: cats } = req.body;
 
-      // Create the budget
-      await storage.createBudget({
-        id: budget.id,
-        userId,
-        name: budget.name,
-        currency: budget.currency,
-        currencyPlacement: budget.currencyPlacement,
-        numberFormat: budget.numberFormat,
-        dateFormat: budget.dateFormat,
-      });
-
-      // Create default category groups
-      for (const g of groups || []) {
-        await storage.createCategoryGroup({ id: g.id, budgetId: budget.id, name: g.name });
-      }
-
-      // Create default categories
-      for (const c of cats || []) {
-        await storage.createCategory({
-          id: c.id,
-          budgetId: budget.id,
-          groupId: c.groupId,
-          name: c.name,
-          goal: c.goal,
+      await storage.transaction(async (tx) => {
+        // Create the budget
+        await tx.createBudget({
+          id: budget.id,
+          userId,
+          name: budget.name,
+          currency: budget.currency,
+          currencyPlacement: budget.currencyPlacement,
+          numberFormat: budget.numberFormat,
+          dateFormat: budget.dateFormat,
         });
-      }
+
+        // Create default category groups
+        for (const g of groups || []) {
+          await tx.createCategoryGroup({ id: g.id, budgetId: budget.id, name: g.name });
+        }
+
+        // Create default categories
+        for (const c of cats || []) {
+          await tx.createCategory({
+            id: c.id,
+            budgetId: budget.id,
+            groupId: c.groupId,
+            name: c.name,
+            goal: c.goal,
+          });
+        }
+      });
 
       res.status(201).json({ id: budget.id });
     } catch (error) {
@@ -487,12 +493,14 @@ export async function registerRoutes(
 
       const { categoryGroups: groups = [], categories: cats = [] } = req.body;
 
-      for (const g of groups) {
-        await storage.createCategoryGroup({ id: g.id, budgetId, name: g.name });
-      }
-      for (const c of cats) {
-        await storage.createCategory({ id: c.id, budgetId, groupId: c.groupId, name: c.name, goal: c.goal });
-      }
+      await storage.transaction(async (tx) => {
+        for (const g of groups) {
+          await tx.createCategoryGroup({ id: g.id, budgetId, name: g.name });
+        }
+        for (const c of cats) {
+          await tx.createCategory({ id: c.id, budgetId, groupId: c.groupId, name: c.name, goal: c.goal });
+        }
+      });
 
       res.json({ ok: true, seeded: true });
     } catch (error) {
@@ -522,57 +530,109 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Entities must belong to the same budget" });
       }
 
-      // Create optional debt repayments group
-      if (categoryGroup) {
-        await storage.createCategoryGroup({
-          id: categoryGroup.id,
-          budgetId: categoryGroup.budgetId,
-          name: categoryGroup.name,
-        });
-      }
+      await storage.transaction(async (tx) => {
+        // Create optional debt repayments group
+        if (categoryGroup) {
+          await tx.createCategoryGroup({
+            id: categoryGroup.id,
+            budgetId: categoryGroup.budgetId,
+            name: categoryGroup.name,
+          });
+        }
 
-      // Create optional linked category for loans
-      if (category) {
-        await storage.createCategory({
-          id: category.id,
-          budgetId: category.budgetId,
-          groupId: category.groupId,
-          name: category.name,
-          goal: category.goal,
-          linkedAccountId: category.linkedAccountId,
-        });
-      }
+        // Create optional linked category for loans
+        if (category) {
+          await tx.createCategory({
+            id: category.id,
+            budgetId: category.budgetId,
+            groupId: category.groupId,
+            name: category.name,
+            goal: category.goal,
+            linkedAccountId: category.linkedAccountId,
+          });
+        }
 
-      await storage.createAccount({
-        id: account.id,
-        budgetId: account.budgetId,
-        name: account.name,
-        type: account.type,
-        balance: account.balance,
-        isActive: account.isActive,
-        interestRate: account.interestRate,
-        monthlyPayment: account.monthlyPayment,
-        originalBalance: account.originalBalance,
-        loanStartDate: account.loanStartDate,
-        linkedCategoryId: account.linkedCategoryId,
+        await tx.createAccount({
+          id: account.id,
+          budgetId: account.budgetId,
+          name: account.name,
+          type: account.type,
+          balance: account.balance,
+          isActive: account.isActive,
+          interestRate: account.interestRate,
+          monthlyPayment: account.monthlyPayment,
+          originalBalance: account.originalBalance,
+          loanStartDate: account.loanStartDate,
+          linkedCategoryId: account.linkedCategoryId,
+        });
+
+        // Create opening balance transaction in the same request so the account row
+        // is guaranteed to exist before the transaction FK is checked.
+        if (openingTransaction) {
+          await tx.createTransaction({
+            id: openingTransaction.id,
+            budgetId: openingTransaction.budgetId,
+            accountId: openingTransaction.accountId,
+            date: openingTransaction.date,
+            payee: openingTransaction.payee,
+            amount: openingTransaction.amount,
+            memo: openingTransaction.memo,
+            cleared: openingTransaction.cleared,
+          });
+        }
       });
 
-      // Create opening balance transaction in the same request so the account row
-      // is guaranteed to exist before the transaction FK is checked.
-      if (openingTransaction) {
-        await storage.createTransaction({
-          id: openingTransaction.id,
-          budgetId: openingTransaction.budgetId,
-          accountId: openingTransaction.accountId,
-          date: openingTransaction.date,
-          payee: openingTransaction.payee,
-          amount: openingTransaction.amount,
-          memo: openingTransaction.memo,
-          cleared: openingTransaction.cleared,
-        });
+      res.status(201).json({ id: account.id });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  // Backfills the shared "Credit Card Payments" category onto credit accounts
+  // that predate this feature: optionally creates the category group/category,
+  // then links every listed account to it, in FK-safe order in one request.
+  app.post("/api/budgets/:budgetId/credit-card-payments/backfill", requireAuth, async (req, res, next) => {
+    try {
+      const userId = req.user!.id;
+      const budgetId = req.params.budgetId;
+
+      if (!await verifyBudgetOwnership(userId, budgetId)) {
+        return res.status(403).json({ message: "Forbidden" });
       }
 
-      res.status(201).json({ id: account.id });
+      const { categoryGroup, category, categoryId, accountIds = [] } = req.body;
+
+      if (
+        (categoryGroup && categoryGroup.budgetId !== budgetId) ||
+        (category && category.budgetId !== budgetId)
+      ) {
+        return res.status(400).json({ message: "Entities must belong to the same budget" });
+      }
+
+      await storage.transaction(async (tx) => {
+        if (categoryGroup) {
+          await tx.createCategoryGroup({
+            id: categoryGroup.id,
+            budgetId,
+            name: categoryGroup.name,
+          });
+        }
+
+        if (category) {
+          await tx.createCategory({
+            id: category.id,
+            budgetId,
+            groupId: category.groupId,
+            name: category.name,
+          });
+        }
+
+        for (const accountId of accountIds) {
+          await tx.updateAccount(accountId, budgetId, { linkedCategoryId: categoryId });
+        }
+      });
+
+      res.json({ ok: true });
     } catch (error) {
       next(error);
     }
@@ -741,7 +801,7 @@ export async function registerRoutes(
   app.post("/api/transactions/loan-payment", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { paymentTransaction, interestTransaction, principalTransaction, accountUpdates } = req.body;
+      const { paymentTransaction, interestTransaction, principalTransaction } = req.body;
 
       if (!await verifyBudgetOwnership(userId, paymentTransaction.budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
@@ -763,57 +823,55 @@ export async function registerRoutes(
         }
       }
 
-      // 1. Parent payment transaction (on checking/savings account)
-      await storage.createTransaction({
-        id: paymentTransaction.id,
-        budgetId: paymentTransaction.budgetId,
-        date: paymentTransaction.date,
-        payee: paymentTransaction.payee,
-        categoryId: paymentTransaction.categoryId,
-        accountId: paymentTransaction.accountId,
-        amount: paymentTransaction.amount,
-        memo: paymentTransaction.memo,
-        cleared: paymentTransaction.cleared,
-      });
+      await storage.transaction(async (tx) => {
+        const changes: BalanceChange[] = [];
 
-      // 2. Interest charge on loan (account row guaranteed to exist already)
-      if (interestTransaction) {
-        await storage.createTransaction({
-          id: interestTransaction.id,
-          budgetId: interestTransaction.budgetId,
-          date: interestTransaction.date,
-          payee: interestTransaction.payee,
-          accountId: interestTransaction.accountId,
-          amount: interestTransaction.amount,
-          memo: interestTransaction.memo,
-          cleared: interestTransaction.cleared,
-          autoGeneratedById: interestTransaction.autoGeneratedById,
-        });
-      }
+        // 1. Parent payment transaction (on checking/savings account)
+        changes.push(await tx.createTransaction({
+          id: paymentTransaction.id,
+          budgetId: paymentTransaction.budgetId,
+          date: paymentTransaction.date,
+          payee: paymentTransaction.payee,
+          categoryId: paymentTransaction.categoryId,
+          accountId: paymentTransaction.accountId,
+          amount: paymentTransaction.amount,
+          memo: paymentTransaction.memo,
+          cleared: paymentTransaction.cleared,
+        }));
 
-      // 3. Principal payment on loan
-      if (principalTransaction) {
-        await storage.createTransaction({
-          id: principalTransaction.id,
-          budgetId: principalTransaction.budgetId,
-          date: principalTransaction.date,
-          payee: principalTransaction.payee,
-          accountId: principalTransaction.accountId,
-          amount: principalTransaction.amount,
-          memo: principalTransaction.memo,
-          cleared: principalTransaction.cleared,
-          autoGeneratedById: principalTransaction.autoGeneratedById,
-        });
-      }
-
-      // 4. Update all account balances (paying account + loan account)
-      if (accountUpdates?.length) {
-        for (const au of accountUpdates) {
-          const updateData: Record<string, unknown> = { balance: au.balance };
-          if (au.isActive !== undefined) updateData.isActive = au.isActive;
-          await storage.updateAccount(au.id, paymentTransaction.budgetId, updateData);
+        // 2. Interest charge on loan (account row guaranteed to exist already)
+        if (interestTransaction) {
+          changes.push(await tx.createTransaction({
+            id: interestTransaction.id,
+            budgetId: interestTransaction.budgetId,
+            date: interestTransaction.date,
+            payee: interestTransaction.payee,
+            accountId: interestTransaction.accountId,
+            amount: interestTransaction.amount,
+            memo: interestTransaction.memo,
+            cleared: interestTransaction.cleared,
+            autoGeneratedById: interestTransaction.autoGeneratedById,
+          }));
         }
-      }
+
+        // 3. Principal payment on loan
+        if (principalTransaction) {
+          changes.push(await tx.createTransaction({
+            id: principalTransaction.id,
+            budgetId: principalTransaction.budgetId,
+            date: principalTransaction.date,
+            payee: principalTransaction.payee,
+            accountId: principalTransaction.accountId,
+            amount: principalTransaction.amount,
+            memo: principalTransaction.memo,
+            cleared: principalTransaction.cleared,
+            autoGeneratedById: principalTransaction.autoGeneratedById,
+          }));
+        }
+
+        // 4. Move the balances of the paying account and the loan account
+        await tx.applyBalanceChanges(loanBudgetId, changes);
+      });
 
       res.status(201).json({ id: paymentTransaction.id });
     } catch (error) {
@@ -826,7 +884,7 @@ export async function registerRoutes(
     try {
       const userId = req.user!.id;
       const { budgetId, updates, interestTransactionId, interestUpdates,
-              principalTransactionId, principalUpdates, accountUpdates } = req.body;
+              principalTransactionId, principalUpdates } = req.body;
 
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
@@ -840,25 +898,16 @@ export async function registerRoutes(
         }
       }
 
-      await storage.updateTransaction(req.params.id, budgetId, updates);
-
-      if (interestTransactionId && interestUpdates) {
-        const dbInterest: Record<string, unknown> = { ...interestUpdates };
-        if (typeof dbInterest.amount === 'number') dbInterest.amount = String(dbInterest.amount);
-        await storage.updateTransaction(interestTransactionId, budgetId, dbInterest);
-      }
-      if (principalTransactionId && principalUpdates) {
-        const dbPrincipal: Record<string, unknown> = { ...principalUpdates };
-        if (typeof dbPrincipal.amount === 'number') dbPrincipal.amount = String(dbPrincipal.amount);
-        await storage.updateTransaction(principalTransactionId, budgetId, dbPrincipal);
-      }
-      if (accountUpdates?.length) {
-        for (const au of accountUpdates) {
-          const updateData: Record<string, unknown> = { balance: au.balance };
-          if (au.isActive !== undefined) updateData.isActive = au.isActive;
-          await storage.updateAccount(au.id, budgetId, updateData);
+      await storage.transaction(async (tx) => {
+        const changes = await tx.updateTransaction(req.params.id, budgetId, updates ?? {});
+        if (interestTransactionId && interestUpdates) {
+          changes.push(...await tx.updateTransaction(interestTransactionId, budgetId, interestUpdates));
         }
-      }
+        if (principalTransactionId && principalUpdates) {
+          changes.push(...await tx.updateTransaction(principalTransactionId, budgetId, principalUpdates));
+        }
+        await tx.applyBalanceChanges(budgetId, changes);
+      });
 
       res.json({ ok: true });
     } catch (error) {
@@ -873,7 +922,7 @@ export async function registerRoutes(
       if (parsed.error !== undefined) {
         return res.status(400).json({ message: parsed.error });
       }
-      const { transaction, accountUpdate } = parsed.data;
+      const { transaction } = parsed.data;
       if (!await verifyBudgetOwnership(userId, transaction.budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
@@ -883,16 +932,15 @@ export async function registerRoutes(
       if (transaction.categoryId && !await categoryInBudget(transaction.categoryId, transaction.budgetId)) {
         return res.status(400).json({ message: "Category does not belong to this budget" });
       }
-      await storage.createTransaction({
-        ...transaction,
-        categoryId: transaction.categoryId ?? undefined,
-        memo: transaction.memo ?? undefined,
-        autoGeneratedById: transaction.autoGeneratedById ?? undefined,
+      await storage.transaction(async (tx) => {
+        const change = await tx.createTransaction({
+          ...transaction,
+          categoryId: transaction.categoryId ?? undefined,
+          memo: transaction.memo ?? undefined,
+          autoGeneratedById: transaction.autoGeneratedById ?? undefined,
+        });
+        await tx.applyBalanceChanges(transaction.budgetId, [change]);
       });
-      // Also update the account balance
-      if (accountUpdate) {
-        await storage.updateAccount(accountUpdate.id, transaction.budgetId, { balance: accountUpdate.balance });
-      }
       res.status(201).json({ id: transaction.id });
     } catch (error) {
       next(error);
@@ -902,7 +950,7 @@ export async function registerRoutes(
   app.patch("/api/transactions/:id", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { budgetId, updates, accountUpdates } = req.body;
+      const { budgetId, updates } = req.body;
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
@@ -912,13 +960,10 @@ export async function registerRoutes(
       if (updates?.categoryId && !await categoryInBudget(updates.categoryId, budgetId)) {
         return res.status(400).json({ message: "Category does not belong to this budget" });
       }
-      await storage.updateTransaction(req.params.id, budgetId, updates);
-      // Update affected account balances
-      if (accountUpdates) {
-        for (const au of accountUpdates) {
-          await storage.updateAccount(au.id, budgetId, { balance: au.balance });
-        }
-      }
+      await storage.transaction(async (tx) => {
+        const changes = await tx.updateTransaction(req.params.id, budgetId, updates ?? {});
+        await tx.applyBalanceChanges(budgetId, changes);
+      });
       res.json({ ok: true });
     } catch (error) {
       next(error);
@@ -928,28 +973,24 @@ export async function registerRoutes(
   app.delete("/api/transactions/:id", requireAuth, async (req, res, next) => {
     try {
       const userId = req.user!.id;
-      const { budgetId, pairedTransactionId, linkedTransactionIds, accountUpdates } = req.body;
+      const { budgetId, pairedTransactionId, linkedTransactionIds } = req.body;
       if (!await verifyBudgetOwnership(userId, budgetId)) {
         return res.status(403).json({ message: "Forbidden" });
       }
-      // Delete linked children first (avoids any potential FK constraint issues)
-      if (linkedTransactionIds?.length) {
-        for (const lid of linkedTransactionIds) {
-          await storage.deleteTransaction(lid, budgetId);
+      await storage.transaction(async (tx) => {
+        // Delete linked children first (avoids any potential FK constraint issues)
+        const ids = new Set<string>([
+          ...(Array.isArray(linkedTransactionIds) ? linkedTransactionIds : []),
+          req.params.id,
+          ...(pairedTransactionId ? [pairedTransactionId] : []),
+        ]);
+        const changes: BalanceChange[] = [];
+        for (const id of Array.from(ids)) {
+          changes.push(...await tx.deleteTransaction(id, budgetId));
         }
-      }
-      await storage.deleteTransaction(req.params.id, budgetId);
-      if (pairedTransactionId) {
-        await storage.deleteTransaction(pairedTransactionId, budgetId);
-      }
-      // Update affected account balances (includes isActive for loan auto-close reversal)
-      if (accountUpdates) {
-        for (const au of accountUpdates) {
-          const updateData: Record<string, unknown> = { balance: au.balance };
-          if (au.isActive !== undefined) updateData.isActive = au.isActive;
-          await storage.updateAccount(au.id, budgetId, updateData);
-        }
-      }
+        // Reverse the deleted amounts (this also reopens a loan that owes again)
+        await tx.applyBalanceChanges(budgetId, changes);
+      });
       res.json({ ok: true });
     } catch (error) {
       next(error);

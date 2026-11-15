@@ -15,6 +15,13 @@
       "when": 1784601000000,
       "tag": "0001_reconcile_users_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794753792374,
+      "tag": "0002_add_cash_account_type",
+      "breakpoints": true
     }
   ]
 }
