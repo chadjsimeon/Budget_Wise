@@ -5,7 +5,9 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: wantnot
+      # The database kept its pre-rebrand name: the pgdata volume was initialised
+      # as "budgetwise", and POSTGRES_DB is ignored once a volume has data.
+      POSTGRES_DB: budgetwise
     ports:
       - "5432:5432"
     volumes:
@@ -24,7 +26,7 @@ services:
     ports:
       - "5050:5050"
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/wantnot
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/budgetwise
       SESSION_SECRET: local-dev-secret-change-in-prod
       NODE_ENV: production
       PORT: "5050"
